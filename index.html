@@ -1,0 +1,921 @@
+<!DOCTYPE html>
+<html lang="zh-Hant" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="巴士ETA">
+<meta name="theme-color" content="#f5f5f0" id="themeColor">
+<link rel="manifest" href="./manifest.webmanifest">
+<title>巴士到站時間</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root,[data-theme="light"]{
+    --bg:#f5f5f0;--surface:#fff;--surface2:#f9f9f7;--border:#e0ddd8;
+    --text:#1a1a16;--muted:#6b6a67;--faint:#a8a7a4;
+    --primary:#01696f;--primary-h:#0c4e54;--primary-l:#e0eeee;
+    --success:#437a22;--warn:#c55700;--err:#a12c2c;--orange:#da7101;
+    --mtr:#c00;
+    --shadow-s:0 1px 3px rgba(0,0,0,.07);--shadow-m:0 4px 12px rgba(0,0,0,.08);
+    --r-s:.375rem;--r-m:.625rem;--r-l:1rem;--r-f:9999px;
+    --t:180ms cubic-bezier(.16,1,.3,1);
+  }
+  [data-theme="dark"]{
+    --bg:#131311;--surface:#1c1c1a;--surface2:#232320;--border:#333330;
+    --text:#d4d3d0;--muted:#7a7975;--faint:#555450;
+    --primary:#4f9ea3;--primary-h:#3a8389;--primary-l:#1e3434;
+    --success:#6daa45;--warn:#fdab43;--err:#e06060;--orange:#fdab43;
+    --mtr:#ff6666;
+    --shadow-s:0 1px 3px rgba(0,0,0,.25);--shadow-m:0 4px 12px rgba(0,0,0,.35);
+  }
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
+  body{font-family:'Noto Sans TC',sans-serif;font-size:1rem;background:var(--bg);color:var(--text);min-height:100dvh;-webkit-font-smoothing:antialiased}
+  button{cursor:pointer;background:none;border:none;font:inherit;color:inherit}
+  input,select{font:inherit;color:inherit}
+
+  /* ── Header ── */
+  .header{position:sticky;top:0;z-index:100;background:var(--surface);border-bottom:1px solid var(--border);padding:.875rem 1rem;display:flex;align-items:center;justify-content:space-between;box-shadow:var(--shadow-s)}
+  .logo{display:flex;align-items:center;gap:.5rem;font-size:1.1rem;font-weight:700;color:var(--primary)}
+  .theme-btn{width:2.5rem;height:2.5rem;border-radius:var(--r-f);display:flex;align-items:center;justify-content:center;color:var(--muted);transition:background var(--t)}
+  .theme-btn:hover{background:var(--border);color:var(--text)}
+
+  /* ── Layout ── */
+  .main{padding:1rem;max-width:480px;margin:0 auto;padding-bottom:5rem}
+  .section-label{font-size:.75rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:.5rem;margin-top:1.25rem}
+  .card{background:var(--surface);border-radius:var(--r-l);border:1px solid var(--border);padding:1rem;box-shadow:var(--shadow-s)}
+
+  /* ── Search form ── */
+  .field-row{display:flex;flex-direction:column;gap:.375rem;margin-bottom:.75rem}
+  .field-label{font-size:.8125rem;font-weight:500;color:var(--muted)}
+  .field-input{background:var(--bg);border:1px solid var(--border);border-radius:var(--r-m);padding:.625rem .75rem;font-size:1rem;width:100%;transition:border-color var(--t),box-shadow var(--t);-webkit-appearance:none;appearance:none}
+  .field-input:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px rgba(1,105,111,.15)}
+  .search-btn{background:var(--primary);color:#fff;border-radius:var(--r-m);padding:.625rem 1rem;font-size:.9375rem;font-weight:600;width:100%;margin-top:.75rem;transition:background var(--t),transform var(--t);box-shadow:var(--shadow-s)}
+  .search-btn:hover{background:var(--primary-h)}
+  .search-btn:active{transform:scale(.98)}
+  .search-btn:disabled{opacity:.55;pointer-events:none}
+  .mtr-note{font-size:.78rem;color:var(--muted);background:var(--surface2);border-radius:var(--r-m);padding:.5rem .75rem;margin-top:.5rem;border:1px solid var(--border)}
+
+  /* ── Stop list ── */
+  .stop-list{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-l);overflow:hidden;margin-top:.5rem}
+  .stop-item{display:flex;align-items:center;padding:.75rem 1rem;border-bottom:1px solid var(--border);cursor:pointer;transition:background var(--t);gap:.75rem}
+  .stop-item:last-child{border-bottom:none}
+  .stop-item:hover{background:var(--surface2)}
+  .stop-item.selected{background:var(--primary-l)}
+  .stop-seq{font-size:.75rem;font-weight:700;color:var(--faint);width:1.5rem;flex-shrink:0;text-align:center}
+  .stop-info{flex:1;min-width:0}
+  .stop-name{font-size:.9375rem;font-weight:600}
+  .stop-sub{font-size:.75rem;color:var(--muted)}
+  .stop-chk{color:var(--primary);flex-shrink:0;display:none}
+  .stop-item.selected .stop-chk{display:block}
+
+  /* ── ETA card ── */
+  .eta-card{background:var(--surface);border-radius:var(--r-l);border:1px solid var(--border);box-shadow:var(--shadow-m);overflow:hidden}
+  .eta-head{background:var(--primary);color:#fff;padding:.875rem 1rem;display:flex;align-items:center;justify-content:space-between;gap:.5rem}
+  .eta-head.mtr{background:var(--mtr)}
+  .eta-badge{font-size:1.5rem;font-weight:700;line-height:1}
+  .eta-dest{font-size:.8125rem;opacity:.88}
+  .eta-sname{font-size:.9rem;font-weight:600;margin-top:.25rem;opacity:.9}
+  .ref-btn{width:2.25rem;height:2.25rem;border-radius:var(--r-f);background:rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center;color:#fff;flex-shrink:0;transition:background var(--t)}
+  .ref-btn:hover{background:rgba(255,255,255,.25)}
+  .ref-btn.spin svg{animation:spin .7s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .eta-rows{padding:.25rem 0}
+  .eta-row{display:flex;align-items:center;padding:.875rem 1rem;border-bottom:1px solid var(--border);gap:.75rem}
+  .eta-row:last-child{border-bottom:none}
+  .eta-idx{width:1.5rem;height:1.5rem;border-radius:var(--r-f);background:var(--border);display:flex;align-items:center;justify-content:center;font-size:.75rem;font-weight:700;color:var(--muted);flex-shrink:0}
+  .eta-tb{flex:1}
+  .eta-hm{font-size:1.05rem;font-weight:700}
+  .eta-rmk{font-size:.75rem;color:var(--muted)}
+  .eta-min{font-size:1.05rem;font-weight:700;text-align:right}
+  .eta-lbl{font-size:.7rem;color:var(--muted);text-align:right}
+  .arriving{color:var(--warn)}
+  .soon{color:var(--orange)}
+  .normal{color:var(--success)}
+  .gone{color:var(--err)}
+  .status-box{text-align:center;padding:2.5rem 1.5rem;color:var(--muted)}
+  .status-box h3{font-size:1rem;font-weight:600;color:var(--text);margin-bottom:.375rem}
+  .status-box p{font-size:.875rem}
+  .upd{font-size:.75rem;color:var(--faint);text-align:center;padding:.75rem 1rem;border-top:1px solid var(--border)}
+
+  /* ── Fav list ── */
+  .fav-list{display:flex;flex-direction:column;gap:.5rem}
+  .fav-item{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-m);padding:.75rem 1rem;display:flex;align-items:center;gap:.75rem;box-shadow:var(--shadow-s)}
+  .fav-pill{background:var(--primary);color:#fff;border-radius:var(--r-s);padding:.25rem .5rem;font-size:.875rem;font-weight:700;flex-shrink:0;min-width:2.75rem;text-align:center;cursor:pointer}
+  .fav-pill.mtr{background:var(--mtr)}
+  .fav-main{flex:1;min-width:0;display:flex;flex-direction:column;align-items:stretch;gap:.5rem;cursor:pointer;text-align:left}
+  .fav-info{flex:1;min-width:0}
+  .fav-sname{font-size:.9375rem;font-weight:600;overflow-wrap:anywhere}
+  .fav-dest{font-size:.75rem;color:var(--muted)}
+  /* ETA mini display on fav card */
+  .fav-eta{display:flex;flex-wrap:wrap;gap:.375rem 1rem;align-items:baseline}
+  .fav-eta-main{font-size:1.05rem;font-weight:700;line-height:1.1}
+  .fav-eta-sub{font-size:.7rem;color:var(--muted);margin-top:.1rem}
+  .fav-eta.st-loading .fav-eta-main{color:var(--faint)}
+  .fav-eta.st-arriving .fav-eta-main{color:var(--warn)}
+  .fav-eta.st-soon .fav-eta-main{color:var(--orange)}
+  .fav-eta.st-normal .fav-eta-main{color:var(--success)}
+  .fav-eta.st-gone .fav-eta-main{color:var(--err)}
+  .fav-eta.st-none .fav-eta-main{color:var(--faint)}
+  .fav-del{width:2rem;height:2rem;border-radius:var(--r-f);display:flex;align-items:center;justify-content:center;color:var(--faint);flex-shrink:0;transition:background var(--t),color var(--t)}
+  .fav-del:hover{background:var(--border);color:var(--err)}
+
+  /* ── Save btn ── */
+  .save-btn{background:none;border:1px solid var(--border);border-radius:var(--r-m);padding:.5rem .875rem;font-size:.8125rem;color:var(--muted);display:flex;align-items:center;gap:.375rem;transition:all var(--t);margin-top:.75rem;width:100%;justify-content:center}
+  .save-btn:hover{border-color:var(--primary);color:var(--primary);background:var(--primary-l)}
+  .hint{font-size:.72rem;color:var(--faint);text-align:center;margin-top:.4rem}
+
+  /* ── Toast ── */
+  .toast{position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%) translateY(100px);background:var(--text);color:var(--bg);padding:.625rem 1.25rem;border-radius:var(--r-f);font-size:.875rem;font-weight:500;z-index:200;transition:transform 300ms cubic-bezier(.16,1,.3,1),opacity 300ms;opacity:0;white-space:nowrap;box-shadow:var(--shadow-m)}
+  .toast.show{transform:translateX(-50%) translateY(0);opacity:1}
+  /* V2: compact favourites, touch controls and scalable text */
+  .fav-heading{display:flex;align-items:center;gap:.25rem;margin-top:.75rem}
+  .fav-heading .section-label{flex:1;margin:0}
+  .small-btn{min-width:44px;min-height:44px;border-radius:var(--r-m);color:var(--primary);font-size:.8125rem;padding:.25rem .5rem}
+  .small-btn:hover{background:var(--primary-l)}
+  .small-btn:disabled{opacity:.4;cursor:default}
+  .refresh-icon{display:inline-block;font-size:1.4rem}
+  .is-refreshing .refresh-icon{animation:spin 1s linear infinite}
+  .fav-item{flex-wrap:wrap;align-items:flex-start}
+  .fav-pill{min-height:44px;display:flex;align-items:center;justify-content:center}
+  .fav-controls{display:flex;justify-content:flex-end;flex-basis:100%;border-top:1px solid var(--border)}
+  .fav-controls .delete-btn{color:var(--err)}
+  .fav-note{flex-basis:100%;font-size:.72rem;color:var(--muted)}
+  .fav-status{font-size:.75rem;color:var(--muted);text-align:center;margin-top:.5rem;overflow-wrap:anywhere}
+  .fav-status:empty{display:none}
+  .theme-btn,.ref-btn{min-width:44px;min-height:44px}
+  .stop-item{width:100%;text-align:left;min-height:44px}
+  .stop-name,.stop-sub,.fav-dest,.eta-dest,.eta-sname,.eta-rmk{overflow-wrap:anywhere}
+  .eta-head>div,.eta-tb{min-width:0}
+  .eta-row{flex-wrap:wrap}
+  .toast{max-width:calc(100% - 2rem);white-space:normal;text-align:center}
+  .main{padding-bottom:calc(3rem + env(safe-area-inset-bottom))}
+  :focus-visible{outline:3px solid var(--primary);outline-offset:3px}
+  [data-theme="dark"]{--muted:#aaa9a4;--faint:#95948f}
+  @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+
+<header class="header">
+  <div class="logo">
+    <svg width="26" height="26" viewBox="0 0 26 26" fill="none">
+      <rect x="2" y="6" width="22" height="14" rx="3" fill="var(--primary)" opacity=".15"/>
+      <rect x="2" y="6" width="22" height="14" rx="3" stroke="var(--primary)" stroke-width="1.75"/>
+      <rect x="5" y="9" width="5" height="4" rx="1" fill="var(--primary)"/>
+      <rect x="11" y="9" width="5" height="4" rx="1" fill="var(--primary)"/>
+      <rect x="17" y="9" width="4" height="4" rx="1" fill="var(--primary)"/>
+      <circle cx="7" cy="21" r="2" fill="var(--primary)"/>
+      <circle cx="19" cy="21" r="2" fill="var(--primary)"/>
+    </svg>
+    巴士ETA
+  </div>
+  <button class="theme-btn" id="themeBtn" aria-label="切換深色模式"></button>
+</header>
+
+<main class="main">
+
+  <!-- Favourites -->
+  <div class="fav-heading">
+    <h2 class="section-label">常用路線</h2>
+    <button class="small-btn" id="manageFavBtn" onclick="toggleFavManagement()" aria-pressed="false">管理</button>
+    <button class="small-btn" id="refreshFavBtn" onclick="refreshAllFavEtas()" aria-label="更新所有常用路線"><span class="refresh-icon" aria-hidden="true">↻</span></button>
+  </div>
+  <div class="fav-list" id="favList">
+    <div class="status-box" style="padding:1.25rem"><p>未有常用路線，搜尋後可儲存</p></div>
+  </div>
+  <div class="fav-status" id="favUpdated"></div>
+  <div class="fav-status" id="networkStatus" role="status"></div>
+  <div class="fav-status" id="storageStatus" role="status"></div>
+
+  <!-- Search -->
+  <div class="section-label">搜尋路線</div>
+  <div class="card">
+    <div class="field-row">
+      <label class="field-label" for="companySelect">巴士公司</label>
+      <select class="field-input" id="companySelect" onchange="onCoChange()">
+        <option value="KMB">九巴 / 龍運 (KMB/LWB)</option>
+        <option value="CTB">城巴 (CTB)</option>
+        <option value="MTR">港鐵巴士 (MTR Bus)</option>
+      </select>
+    </div>
+    <div class="field-row">
+      <label class="field-label" for="routeInput">路線號碼</label>
+      <input class="field-input" type="text" id="routeInput" placeholder="例如 K53、K53S、268C、E34A" autocomplete="off" autocapitalize="characters" spellcheck="false">
+    </div>
+    <div class="field-row">
+      <label class="field-label" for="dirSelect">方向</label>
+      <select class="field-input" id="dirSelect">
+        <option value="outbound">去程 (outbound)</option>
+        <option value="inbound">回程 (inbound)</option>
+      </select>
+    </div>
+    <div class="field-row" id="serviceField" style="display:none">
+      <label class="field-label" for="serviceSelect">服務選擇</label>
+      <select class="field-input" id="serviceSelect" onchange="doSearch(true)"></select>
+    </div>
+    <div id="mtrNote" class="mtr-note" style="display:none">💡 港鐵巴士循環綫（如 K53、K53S）選去程即可</div>
+    <button class="search-btn" id="searchBtn" onclick="doSearch()">搜尋站點</button>
+  </div>
+
+  <!-- Stop list -->
+  <div id="stopSection" style="display:none">
+    <div class="section-label">選擇站點</div>
+    <div class="stop-list" id="stopList"></div>
+  </div>
+
+  <!-- ETA detail -->
+  <div id="etaSection" style="display:none">
+    <div class="section-label">到站時間</div>
+    <div class="eta-card">
+      <div class="eta-head" id="etaHead">
+        <div>
+          <div class="eta-badge" id="etaBadge"></div>
+          <div class="eta-dest" id="etaDest"></div>
+          <div class="eta-sname" id="etaSname"></div>
+        </div>
+        <button class="ref-btn" id="refBtn" onclick="doRefresh()" aria-label="重新整理">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
+            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+          </svg>
+        </button>
+      </div>
+      <div class="eta-rows" id="etaRows"></div>
+      <div class="upd" id="upd"></div>
+    </div>
+    <button class="save-btn" onclick="saveFav()">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+      儲存為常用路線
+    </button>
+    <div class="hint">常用路線自動儲存在這部裝置，毋須重新加入主畫面</div>
+  </div>
+
+</main>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+
+// ── Embedded MTR Bus data (676 stops, 26 routes) ──
+const MTR_STOPS = {"K12-U010":{"tc":"大埔墟站","en":"Tai Po Market Station"},"K12-U020":{"tc":"大埔超級城","en":"Tai Po Mega Mall"},"K12-U030":{"tc":"八號花園","en":"Eightland Garden"},"K12-D010":{"tc":"八號花園","en":"Eightland Garden"},"K12-D020":{"tc":"大埔超級城","en":"Tai Po Mega Mall"},"K12-D030":{"tc":"新達廣場","en":"Uptown Plaza"},"K12-D040":{"tc":"大埔墟站","en":"Tai Po Market Station"},"K14-D010":{"tc":"大埔超級城","en":"Tai Po Mega Mall"},"K14-D020":{"tc":"新達廣場","en":"Uptown Plaza"},"K14-D030":{"tc":"大埔墟站","en":"Tai Po Market Station"},"K17-U010":{"tc":"大埔墟站","en":"Tai Po Market Station"},"K17-U020":{"tc":"大埔中心第五期","en":"Tai Po Centre Phase 5"},"K17-U030":{"tc":"怡雅苑","en":"Yee Nga Court"},"K17-U040":{"tc":"富善","en":"Fu Shin"},"K17-D010":{"tc":"富善","en":"Fu Shin"},"K17-D020":{"tc":"新達廣場","en":"Uptown Plaza"},"K17-D030":{"tc":"大埔墟站","en":"Tai Po Market Station"},"K18-U010":{"tc":"大埔墟站","en":"Tai Po Market Station"},"K18-U020":{"tc":"宏福苑","en":"Wang Fuk Court"},"K18-U030":{"tc":"廣福","en":"Kwong Fuk"},"K18-D010":{"tc":"廣福","en":"Kwong Fuk"},"K18-D020":{"tc":"新達廣場","en":"Uptown Plaza"},"K18-D030":{"tc":"大埔墟站","en":"Tai Po Market Station"},"506-U010":{"tc":"屯門碼頭","en":"Tuen Mun Ferry Pier"},"506-U020":{"tc":"美樂花園","en":"Melody Garden"},"506-U030":{"tc":"輕鐵蝴蝶站","en":"LR Butterfly Stop"},"506-U040":{"tc":"輕鐵車廠站","en":"Light Rail Depot Stop"},"506-U050":{"tc":"輕鐵龍門站","en":"LR Lung Mun Stop"},"506-U060":{"tc":"輕鐵青雲站","en":"LR Tsing Wun Stop"},"506-U070":{"tc":"輕鐵建安站","en":"LR Kin On Stop"},"506-U080":{"tc":"港鐵屯門站","en":"MTR Tuen Mun Station"},"506-U090":{"tc":"屯門市中心","en":"Tuen Mun Town Centre"},"506-U100":{"tc":"安定邨","en":"On Ting Estate"},"506-U110":{"tc":"輕鐵三聖站","en":"LR Sam Shing Stop"},"506-U120":{"tc":"兆麟","en":"Siu Lun"},"506-D010":{"tc":"兆麟","en":"Siu Lun"},"506-D020":{"tc":"友愛邨","en":"Yau Oi Estate"},"506-D030":{"tc":"輕鐵市中心站","en":"LR Town Centre Stop"},"506-D040":{"tc":"輕鐵屯門站","en":"LR Tuen Mun Stop"},"506-D050":{"tc":"輕鐵建安站","en":"LR Kin On Stop"},"506-D060":{"tc":"輕鐵青雲站","en":"LR Tsing Wun Stop"},"506-D070":{"tc":"聖彼得堂","en":"SKH St. Peter's Church"},"506-D080":{"tc":"富健花園","en":"Glorious Garden"},"506-D090":{"tc":"新屯門中心","en":"Sun Tuen Mun Centre"},"506-D100":{"tc":"輕鐵蝴蝶站","en":"LR Butterfly Stop"},"506-D110":{"tc":"蝴蝶邨蝶心樓","en":"\"Tip Sum House"},"506-D120":{"tc":"湖景邨湖碧樓","en":"\"Wu Pik House"},"506-D130":{"tc":"海翠花園","en":"Pierhead Garden"},"506-D140":{"tc":"屯門碼頭","en":"Tuen Mun Ferry Pier"},"506-U045":{"tc":"富健花園","en":"Glorious Garden"},"506-U075":{"tc":"屯門站","en":"Tuen Mun Station"},"K51-U010":{"tc":"富泰","en":"Fu Tai"},"K51-U020":{"tc":"聚康山莊","en":"Beneville"},"K51-U030":{"tc":"嶺南大學","en":"Lingnan University"},"K51-U040":{"tc":"彩暉花園","en":"Brilliant Garden"},"K51-U050":{"tc":"港鐵兆康站 (南)","en":"MTR Siu Hong Station (South)"},"K51-U060":{"tc":"井財街","en":"Tseng Choi Street"},"K51-U070":{"tc":"雅都商場","en":"ACME Shopping Arcade"},"K51-U080":{"tc":"德政圍 (港鐵屯門站)","en":"Tak Ching Court (MTR Tuen Mun Station)"},"K51-U090":{"tc":"屯門市中心 (輕鐵市中心站)","en":"Tuen Mun Town Centre (LR Town Centre Stop)"},"K51-U100":{"tc":"屯門官立中學","en":"Tuen Mun Government Secondary School"},"K51-U110":{"tc":"恒順園","en":"Handsome Court"},"K51-U120":{"tc":"恒豐園","en":"Harvest Garden"},"K51-U130":{"tc":"三聖邨","en":"Sam Shing Estate"},"K51-U140":{"tc":"青山灣","en":"Castle Peak Beach"},"K51-U150":{"tc":"海景花園","en":"Seaview Garden"},"K51-U160":{"tc":"咖啡灣","en":"Cafeteria Beach"},"K51-U170":{"tc":"黃金泳灘","en":"Golden Beach"},"K51-U180":{"tc":"香港黃金海岸","en":"Hong Kong Gold Coast"},"K51-U190":{"tc":"嘉禾里村","en":"Kar Wo Lei Tsuen"},"K51-U200":{"tc":"小秀村","en":"Siu Sau Tsuen"},"K51-U210":{"tc":"愛琴灣","en":"The Aegean"},"K51-U220":{"tc":"小欖新村","en":"Siu Lam San Tsuen"},"K51-U230":{"tc":"小欖村","en":"Siu Lam Tsuen"},"K51-U240":{"tc":"小欖澄麗路","en":"Ching Lai Road Siu Lam"},"K51-U250":{"tc":"大欖","en":"Tai Lam"},"K51-D010":{"tc":"大欖","en":"Tai Lam"},"K51-D020":{"tc":"小欖","en":"Siu Lam"},"K51-D030":{"tc":"小欖澄麗路","en":"Ching Lai Road Siu Lam"},"K51-D040":{"tc":"小欖村","en":"Siu Lam Tsuen"},"K51-D050":{"tc":"小欖新村","en":"Siu Lam San Tsuen"},"K51-D060":{"tc":"愛琴灣","en":"The Aegean"},"K51-D070":{"tc":"小秀上村","en":"Siu Sau Sheung Tsuen"},"K51-D080":{"tc":"龍珠島","en":"Pearl Island"},"K51-D090":{"tc":"香港黃金海岸","en":"Hong Kong Gold Coast"},"K51-D100":{"tc":"黃金泳灘","en":"Golden Beach"},"K51-D110":{"tc":"咖啡灣","en":"Cafeteria Beach"},"K51-D120":{"tc":"碧翠花園","en":"Bayview Terrace"},"K51-D130":{"tc":"青山灣碼頭","en":"Castle Peak Bay Pier"},"K51-D140":{"tc":"三聖邨","en":"Sam Shing Estate"},"K51-D150":{"tc":"恆福花園 (輕鐵三聖站)","en":"Hanford Garden (LR Sam Shing Stop)"},"K51-D160":{"tc":"胡陳金枝中學","en":"Mrs Aw Boon Haw Secondary School"},"K51-D170":{"tc":"青善遊樂場","en":"Tsing Sin Playground"},"K51-D180":{"tc":"置樂花園","en":"Chi Lok Fa Yuen"},"K51-D190":{"tc":"屯門官立中學","en":"Tuen Mun Government Secondary School"},"K51-D200":{"tc":"輕鐵市中心站","en":"LR Town Centre Stop"},"K51-D210":{"tc":"港鐵屯門站 (輕鐵屯門站)","en":"MTR Tuen Mun Station (LR Tuen Mun Stop)"},"K51-D220":{"tc":"聖公會聖西門呂明才中學","en":"SKH St. Simon's Lui Ming Choi Secondary School"},"K51-D230":{"tc":"景峰花園","en":"Prime View Garden"},"K51-D240":{"tc":"輕鐵鳳地站","en":"LR Fung Tei Stop"},"K51-D250":{"tc":"港鐵兆康站 (南)","en":"MTR Siu Hong Station (South)"},"K51-D260":{"tc":"彩暉花園","en":"Brilliant Garden"},"K51-D270":{"tc":"嶺南大學","en":"Lingnan University"},"K51-D280":{"tc":"倚嶺南庭","en":"South Hillcrest"},"K51-D290":{"tc":"富泰","en":"Fu Tai"},"K51A-U010":{"tc":"富泰","en":"Fu Tai"},"K51A-U020":{"tc":"聚康山莊","en":"Beneville"},"K51A-U030":{"tc":"嶺南大學","en":"Lingnan University"},"K51A-U040":{"tc":"彩暉花園","en":"Brilliant Garden"},"K51A-U050":{"tc":"港鐵兆康站 (南) (輕鐵兆康站)","en":"MTR Siu Hong Station (South) (LR Siu Hong Stop)"},"K51A-U060":{"tc":"井財街","en":"Tseng Choi Street"},"K51A-U070":{"tc":"雅都商場","en":"ACME Shopping Arcade"},"K51A-U080":{"tc":"德政圍 (港鐵屯門站)","en":"Tak Ching Court (MTR Tuen Mun Station)"},"K51A-U090":{"tc":"屯門市中心 (輕鐵市中心站)","en":"Tuen Mun Town Centre (LR Town Centre Stop)"},"K51A-U100":{"tc":"屯門官立中學","en":"Tuen Mun Government Secondary School"},"K51A-U110":{"tc":"恒順園","en":"Handsome Court"},"K51A-U120":{"tc":"恒豐園","en":"Harvest Garden"},"K51A-U130":{"tc":"三聖邨","en":"Sam Shing Estate"},"K51A-U140":{"tc":"青山灣","en":"Castle Peak Beach"},"K51A-U150":{"tc":"海景花園","en":"Seaview Garden"},"K51A-U160":{"tc":"咖啡灣","en":"Cafeteria Beach"},"K51A-U170":{"tc":"黃金泳灘","en":"Golden Beach"},"K51A-U180":{"tc":"香港黃金海岸","en":"Hong Kong Gold Coast"},"K51A-U190":{"tc":"愛琴海岸","en":"Aegean Coast"},"K51A-U200":{"tc":"掃管笏變電站","en":"So Kwun Wat Sub-station"},"K51A-U210":{"tc":"掃管笏村","en":"So Kwun Wat Tsuen"},"K51A-U220":{"tc":"掃管笏 (鄭任安夫人千禧小學)","en":"So Kwun Wat (Mrs. Cheng Yam On Millennium School)"},"K51A-U230":{"tc":"掃管笏路","en":"So Kwun Wat Road"},"K51A-U240":{"tc":"管翠路8號","en":"8 Kwun Chui Road"},"K51A-U250":{"tc":"掃管笏村","en":"So Kwun Wat Tsuen"},"K51A-D010":{"tc":"掃管笏村","en":"So Kwun Wat Tsuen"},"K51A-D020":{"tc":"掃管笏 (鄭任安夫人千禧小學)","en":"So Kwun Wat (Mrs. Cheng Yam On Millennium School)"},"K51A-D030":{"tc":"掃管笏路","en":"So Kwun Wat Road"},"K51A-D040":{"tc":"管翠路8號","en":"8 Kwun Chui Road"},"K51A-D050":{"tc":"管翠路","en":"Kwun Chui Road"},"K51A-D060":{"tc":"愛琴海岸","en":"Aegean Coast"},"K51A-D070":{"tc":"香港黃金海岸","en":"Hong Kong Gold Coast"},"K51A-D080":{"tc":"黃金泳灘","en":"Golden Beach"},"K51A-D090":{"tc":"咖啡灣","en":"Cafeteria Beach"},"K51A-D100":{"tc":"碧翠花園","en":"Bayview Terrace"},"K51A-D110":{"tc":"青山灣碼頭","en":"Castle Peak Bay Pier"},"K51A-D120":{"tc":"三聖邨","en":"Sam Shing Estate"},"K51A-D140":{"tc":"胡陳金枝中學","en":"Mrs Aw Boon Haw Secondary School"},"K51A-D150":{"tc":"青善遊樂場","en":"Tsing Sin Playground"},"K51A-D160":{"tc":"置樂花園","en":"Chi Lok Fa Yuen"},"K51A-D170":{"tc":"屯門官立中學","en":"Tuen Mun Government Secondary School"},"K51A-D180":{"tc":"輕鐵市中心站","en":"LR Town Centre Stop"},"K51A-D190":{"tc":"港鐵屯門站 (輕鐵屯門站)","en":"MTR Tuen Mun Station (LR Tuen Mun Stop)"},"K51A-D200":{"tc":"聖公會聖西門呂明才中學","en":"SKH St. Simon's Lui Ming Choi Secondary School"},"K51A-D210":{"tc":"景峰花園","en":"Prime View Garden"},"K51A-D220":{"tc":"輕鐵鳳地站","en":"LR Fung Tei Stop"},"K51A-D230":{"tc":"港鐵兆康站 (南) (輕鐵兆康站)","en":"MTR Siu Hong Station (South) (LR Siu Hong Stop)"},"K51A-D240":{"tc":"彩暉花園","en":"Brilliant Garden"},"K51A-D250":{"tc":"嶺南大學","en":"Lingnan University"},"K51A-D260":{"tc":"倚嶺南庭","en":"South Hillcrest"},"K51A-D270":{"tc":"富泰","en":"Fu Tai"},"K52-nU010":{"tc":"悅湖山莊","en":"Yuet Wu Villa"},"K52-nU020":{"tc":"邁亞美海灣","en":"Miami Beach Towers"},"K52-nU030":{"tc":"屯門碼頭","en":"Tuen Mun Ferry Pier"},"K52-nU040":{"tc":"湖景邨湖畔樓","en":"\"Wu Boon House"},"K52-nU050":{"tc":"湖景邨湖翠樓","en":"\"Wu Tsui House"},"K52-nU060":{"tc":"屯門中央廣場","en":"Tuen Mun Central Square"},"K52-nU070":{"tc":"輕鐵三聖站","en":"LR Sam Shing Stop"},"K52-nU080":{"tc":"胡陳金枝中學","en":"Mrs Aw Boon Haw Secondary School"},"K52-nU090":{"tc":"青善遊樂場","en":"Tsing Sin Playground"},"K52-nU100":{"tc":"置樂花園","en":"Chi Lok Fa Yuen"},"K52-nU110":{"tc":"屯門官立中學","en":"Tuen Mun Government Secondary School"},"K52-nU120":{"tc":"輕鐵市中心站","en":"LR Town Centre Stop"},"K52-nU140":{"tc":"輕鐵屯門站","en":"LR Tuen Mun Stop"},"K52-nU150":{"tc":"輕鐵建安站","en":"LR Kin On Stop"},"K52-nU160":{"tc":"輕鐵青雲站","en":"LR Tsing Wun Stop"},"K52-nU170":{"tc":"聖彼得堂","en":"SKH St. Peter's Church"},"K52-nU180":{"tc":"富健花園","en":"Glorious Garden"},"K52-nU190":{"tc":"新屯門中心","en":"Sun Tuen Mun Centre"},"K52-nU200":{"tc":"輕鐵蝴蝶站","en":"LR Butterfly Stop"},"K52-nU210":{"tc":"屯門公眾騎術學校","en":"Tuen Mun Public Riding School"},"K52-nU220":{"tc":"蝴蝶灣公園","en":"Butterfly Beach Park"},"K52-nU230":{"tc":"望后石","en":"Pillar Point"},"K52-nU240":{"tc":"政府車場","en":"Government Depot"},"K52-nU250":{"tc":"內河碼頭","en":"River Trade Terminal"},"K52-nU260":{"tc":"環保園","en":"EcoPark"},"K52-nU270":{"tc":"紹榮鋼鐵","en":"Shiu Wing Steel Mill"},"K52-nU280":{"tc":"沙埔崗312號","en":"No.312 Sha Po Kong"},"K52-nU290":{"tc":"沙埔崗177號","en":"No.177 Sha Po Kong"},"K52-nU300":{"tc":"沙埔崗127號","en":"No.127 Sha Po Kong"},"K52-nU310":{"tc":"龍鼓灘","en":"Lung Kwu Tan"},"K52-nD010":{"tc":"龍鼓灘","en":"Lung Kwu Tan"},"K52-nD020":{"tc":"沙埔崗127號","en":"No.127 Sha Po Kong"},"K52-nD030":{"tc":"沙埔崗177號","en":"No.177 Sha Po Kong"},"K52-nD040":{"tc":"沙埔崗288號","en":"No.288 Sha Po Kong"},"K52-nD050":{"tc":"沙埔崗351號","en":"No.351 Sha Po Kong"},"K52-nD060":{"tc":"中電 A廠","en":"CLP (Plant A)"},"K52-nD070":{"tc":"紹榮鋼鐵","en":"Shiu Wing Steel Mill"},"K52-nD080":{"tc":"環保園","en":"EcoPark"},"K52-nD090":{"tc":"內河碼頭","en":"River Trade Terminal"},"K52-nD100":{"tc":"政府車場","en":"Government Depot"},"K52-nD110":{"tc":"望后石","en":"Pillar Point"},"K52-nD120":{"tc":"蝴蝶灣公園","en":"Butterfly Beach Park"},"K52-nD130":{"tc":"屯門公眾騎術學校","en":"Tuen Mun Public Riding School"},"K52-nD140":{"tc":"輕鐵蝴蝶站","en":"LR Butterfly Stop"},"K52-nD150":{"tc":"輕鐵車廠站","en":"Light Rail Depot Stop"},"K52-nD160":{"tc":"輕鐵龍門站","en":"LR Lung Mun Stop"},"K52-nD170":{"tc":"輕鐵青雲站","en":"LR Tsing Wun Stop"},"K52-nD180":{"tc":"輕鐵建安站","en":"LR Kin On Stop"},"K52-nD190":{"tc":"屯門站","en":"Tuen Mun Station"},"K52-nD200":{"tc":"屯門市中心","en":"Tuen Mun Town Centre"},"K52-nD210":{"tc":"屯門官立中學","en":"Tuen Mun Government Secondary School"},"K52-nD220":{"tc":"恒順園","en":"Handsome Court"},"K52-nD230":{"tc":"恒豐園","en":"Harvest Garden"},"K52-nD240":{"tc":"輕鐵三聖站","en":"LR Sam Shing Stop"},"K52-nD250":{"tc":"屯門中央廣場","en":"Tuen Mun Central Square"},"K52-nD260":{"tc":"湖景邨湖翠樓","en":"\"Wu Tsui House"},"K52-nD270":{"tc":"兆禧苑","en":"Siu Hei Court"},"K52-nD280":{"tc":"海翠花園","en":"Pierhead Garden"},"K52-nD290":{"tc":"邁亞美海灣","en":"Miami Beach Towers"},"K52-nD300":{"tc":"悅湖山莊","en":"Yuet Wu Villa"},"K52P-D010":{"tc":"龍鼓灘","en":"Lung Kwu Tan"},"K52P-D020":{"tc":"沙埔崗127號","en":"No.127 Sha Po Kong"},"K52P-D030":{"tc":"沙埔崗177號","en":"No.177 Sha Po Kong"},"K52P-D040":{"tc":"沙埔崗288號","en":"No.288 Sha Po Kong"},"K52P-D050":{"tc":"沙埔崗351號","en":"No.351 Sha Po Kong"},"K52P-D060":{"tc":"中電 A廠","en":"CLP (Plant A)"},"K52P-D070":{"tc":"紹榮鋼鐵","en":"Shiu Wing Steel Mill"},"K52P-D080":{"tc":"環保園","en":"EcoPark"},"K52P-D090":{"tc":"內河碼頭","en":"River Trade Terminal"},"K52P-D100":{"tc":"政府車場","en":"Government Depot"},"K52P-D110":{"tc":"望后石","en":"Pillar Point"},"K52P-D120":{"tc":"蝴蝶灣公園","en":"Butterfly Beach Park"},"K52P-D130":{"tc":"屯門公眾騎術學校","en":"Tuen Mun Public Riding School"},"K52P-D140":{"tc":"輕鐵蝴蝶站","en":"LR Butterfly Stop"},"K52P-D150":{"tc":"悅湖山莊","en":"Yuet Wu Villa"},"K52P-D160":{"tc":"邁亞美海灣","en":"Miami Beach Towers"},"K52P-D170":{"tc":"屯門碼頭","en":"Tuen Mun Ferry Pier"},"K52P-D180":{"tc":"湖景邨湖畔樓","en":"\"Wu Boon House"},"K52P-D190":{"tc":"湖景邨湖翠樓","en":"\"Wu Tsui House"},"K52P-D200":{"tc":"兆山苑","en":"Siu Shan Court"},"K52P-D210":{"tc":"輕鐵車廠站","en":"Light Rail Depot Stop"},"K52P-D220":{"tc":"輕鐵龍門站","en":"LR Lung Mun Stop"},"K52P-D230":{"tc":"輕鐵青雲站","en":"LR Tsing Wun Stop"},"K52P-D240":{"tc":"輕鐵建安站","en":"LR Kin On Stop"},"K52P-D250":{"tc":"屯門站","en":"Tuen Mun Station"},"K52A-U010":{"tc":"屯門站 (輕鐵屯門站)","en":"Tuen Mun Station (LR Tuen Mun Stop)"},"K52A-U015":{"tc":"輕鐵屯門站 (請留意服務時間)*","en":"LR Tuen Mun Stop (Please refer to Service Time)*"},"K52A-U020":{"tc":"輕鐵建安站","en":"LR Kin On Stop"},"K52A-U030":{"tc":"輕鐵青雲站","en":"LR Tsing Wun Stop"},"K52A-U040":{"tc":"聖彼得堂","en":"SKH St. Peter's Church"},"K52A-U050":{"tc":"富健花園","en":"Glorious Garden"},"K52A-U060":{"tc":"新屯門中心","en":"Sun Tuen Mun Centre"},"K52A-U070":{"tc":"輕鐵蝴蝶站","en":"LR Butterfly Stop"},"K52A-U080":{"tc":"屯門公眾騎術學校","en":"Tuen Mun Public Riding School"},"K52A-U090":{"tc":"蝴蝶灣公園","en":"Butterfly Beach Park"},"K52A-U100":{"tc":"望后石","en":"Pillar Point"},"K52A-U110":{"tc":"政府車場","en":"Government Depot"},"K52A-U120":{"tc":"內河碼頭","en":"River Trade Terminal"},"K52A-U130":{"tc":"環保園","en":"EcoPark"},"K52A-U140":{"tc":"紹榮鋼鐵","en":"Shiu Wing Steel Mill"},"K52A-U150":{"tc":"沙埔崗312號","en":"No.312 Sha Po Kong"},"K52A-U160":{"tc":"沙埔崗177號","en":"No.177 Sha Po Kong"},"K52A-U170":{"tc":"沙埔崗127號","en":"No.127 Sha Po Kong"},"K52A-U180":{"tc":"曾咀 (曾咀靈灰安置所)","en":"Tsang Tsui (Tsang Tsui Columbarium)"},"K52A-D010":{"tc":"曾咀 (曾咀靈灰安置所)","en":"Tsang Tsui (Tsang Tsui Columbarium)"},"K52A-D020":{"tc":"沙埔崗127號","en":"No.127 Sha Po Kong"},"K52A-D030":{"tc":"沙埔崗177號","en":"No.177 Sha Po Kong"},"K52A-D040":{"tc":"沙埔崗288號","en":"No.288 Sha Po Kong"},"K52A-D050":{"tc":"沙埔崗351號","en":"No.351 Sha Po Kong"},"K52A-D060":{"tc":"中電 A廠","en":"CLP (Plant A)"},"K52A-D070":{"tc":"紹榮鋼鐵","en":"Shiu Wing Steel Mill"},"K52A-D080":{"tc":"環保園","en":"EcoPark"},"K52A-D090":{"tc":"內河碼頭","en":"River Trade Terminal"},"K52A-D100":{"tc":"政府車場","en":"Government Depot"},"K52A-D110":{"tc":"望后石","en":"Pillar Point"},"K52A-D120":{"tc":"蝴蝶灣公園","en":"Butterfly Beach Park"},"K52A-D130":{"tc":"屯門公眾騎術學校","en":"Tuen Mun Public Riding School"},"K52A-D140":{"tc":"輕鐵蝴蝶站","en":"LR Butterfly Stop"},"K52A-D150":{"tc":"輕鐵車廠站","en":"Light Rail Depot Stop"},"K52A-D160":{"tc":"輕鐵龍門站","en":"LR Lung Mun Stop"},"K52A-D170":{"tc":"輕鐵青雲站","en":"LR Tsing Wun Stop"},"K52A-D180":{"tc":"輕鐵建安站","en":"LR Kin On Stop"},"K52A-D190":{"tc":"屯門站 (輕鐵屯門站)","en":"Tuen Mun Station (LR Tuen Mun Stop)"},"K53-U010":{"tc":"屯門站 (輕鐵屯門站)","en":"Tuen Mun Station (LR Tuen Mun Stop)"},"K53-U020":{"tc":"屯門市中心","en":"Tuen Mun Town Centre"},"K53-U030":{"tc":"屯門官立中學","en":"Tuen Mun Government Secondary School"},"K53-U040":{"tc":"恒順園","en":"Handsome Court"},"K53-U050":{"tc":"恒豐園","en":"Harvest Garden"},"K53-U060":{"tc":"三聖邨","en":"Sam Shing Estate"},"K53-U070":{"tc":"青山灣","en":"Castle Peak Beach"},"K53-U080":{"tc":"海景花園","en":"Seaview Garden"},"K53-U090":{"tc":"咖啡灣","en":"Cafeteria Beach"},"K53-U100":{"tc":"黃金泳灘","en":"Golden Beach"},"K53-U110":{"tc":"香港黃金海岸","en":"Hong Kong Gold Coast"},"K53-U120":{"tc":"愛琴海岸","en":"Aegean Coast"},"K53-U130":{"tc":"掃管笏變電站","en":"So Kwun Wat Sub-station"},"K53-U140":{"tc":"掃管笏村","en":"So Kwun Wat Tsuen"},"K53-D010":{"tc":"掃管笏 (鄭任安夫人千禧小學)","en":"So Kwun Wat (Mrs. Cheng Yam On Millennium School)"},"K53-D015":{"tc":"掃管笏路","en":"So Kwun Wat Road"},"K53-D020":{"tc":"管翠路8號","en":"8 Kwun Chui Road"},"K53-D030":{"tc":"管翠路","en":"Kwun Chui Road"},"K53-D040":{"tc":"愛琴海岸","en":"Aegean Coast"},"K53-D050":{"tc":"香港黃金海岸","en":"Hong Kong Gold Coast"},"K53-D060":{"tc":"黃金泳灘","en":"Golden Beach"},"K53-D070":{"tc":"咖啡灣","en":"Cafeteria Beach"},"K53-D080":{"tc":"碧翠花園","en":"Bayview Terrace"},"K53-D090":{"tc":"青山灣碼頭","en":"Castle Peak Bay Pier"},"K53-D100":{"tc":"三聖邨","en":"Sam Shing Estate"},"K53-D110":{"tc":"恆福花園 (輕鐵三聖站)","en":"Hanford Garden (LR Sam Shing Stop)"},"K53-D120":{"tc":"胡陳金枝中學","en":"Mrs Aw Boon Haw Secondary School"},"K53-D130":{"tc":"青善遊樂場","en":"Tsing Sin Playground"},"K53-D140":{"tc":"置樂花園","en":"Chi Lok Fa Yuen"},"K53-D150":{"tc":"屯門官立中學","en":"Tuen Mun Government Secondary School"},"K53-D160":{"tc":"輕鐵市中心站","en":"LR Town Centre Stop"},"K53-U011":{"tc":"屯門站 (輕鐵屯門站)","en":"Tuen Mun Station (LR Tuen Mun Stop)"},"K53S-U010":{"tc":"屯門站","en":"Tuen Mun Station"},"K53S-U020":{"tc":"天后路","en":"Tin Hau Road"},"K53S-U030":{"tc":"業旺邨","en":"Yip Wong Estate"},"K53S-U040":{"tc":"屯門站","en":"Tuen Mun Station"},"K54-U010":{"tc":"和田邨","en":"Wo Tin Estate"},"K54-U020":{"tc":"菁田邨","en":"Ching Tin Estate"},"K54-U030":{"tc":"紫田村","en":"Tsz Tin Tsuen"},"K54-U040":{"tc":"欣田邨","en":"Yan Tin Estate"},"K54-U050":{"tc":"港鐵兆康站 (北) (輕鐵兆康站)","en":"MTR Siu Hong Station (North) (LR Siu Hong Stop)"},"K54-U060":{"tc":"紅橋","en":"Hung Kiu"},"K54-U070":{"tc":"屯門市中心","en":"Tuen Mun Town Centre"},"K54-D010":{"tc":"屯門市廣場","en":"Tuen Mun Town Plaza"},"K54-D020":{"tc":"新墟街市","en":"San Hui Market"},"K54-D030":{"tc":"港鐵兆康站 (北) (輕鐵兆康站)","en":"MTR Siu Hong Station (North) (LR Siu Hong Stop)"},"K54-D040":{"tc":"兆康苑","en":"Siu Hong Court"},"K54-D050":{"tc":"欣寶路公共運輸交匯處","en":"Yan Po Road Public Transport Interchange"},"K54-D060":{"tc":"菁田邨","en":"Ching Tin Estate"},"K54-D070":{"tc":"和田邨","en":"Wo Tin Estate"},"K54A-U010":{"tc":"和田邨","en":"Wo Tin Estate"},"K54A-U020":{"tc":"菁田邨","en":"Ching Tin Estate"},"K54A-U030":{"tc":"紫田村","en":"Tsz Tin Tsuen"},"K54A-U040":{"tc":"欣田邨","en":"Yan Tin Estate"},"K54A-U050":{"tc":"港鐵兆康站 (北) (輕鐵兆康站)","en":"MTR Siu Hong Station (North) (LR Siu Hong Stop)"},"K54A-D010":{"tc":"港鐵兆康站 (北) (輕鐵兆康站)","en":"MTR Siu Hong Station (North) (LR Siu Hong Stop)"},"K54A-D020":{"tc":"兆康苑","en":"Siu Hong Court"},"K54A-D030":{"tc":"欣寶路公共運輸交匯處","en":"Yan Po Road Public Transport Interchange"},"K54A-D040":{"tc":"菁田邨","en":"Ching Tin Estate"},"K54A-D050":{"tc":"和田邨","en":"Wo Tin Estate"},"K58-U010":{"tc":"富泰","en":"Fu Tai"},"K58-U020":{"tc":"聚康山莊","en":"Beneville"},"K58-U023":{"tc":"嶺南大學","en":"Lingnan University"},"K58-U026":{"tc":"彩暉花園","en":"Brilliant Garden"},"K58-U030":{"tc":"港鐵兆康站 (南) (輕鐵兆康站)","en":"MTR Siu Hong Station (South) (LR Siu Hong Stop)"},"K58-U040":{"tc":"兆康苑","en":"Siu Hong Court"},"K58-U050":{"tc":"輕鐵麒麟站","en":"LR Kei Lun Stop"},"K58-U060":{"tc":"屯門醫院","en":"Tuen Mun Hospital"},"K58-U070":{"tc":"青松觀","en":"Tsing Chung Koon"},"K58-U080":{"tc":"保良局莊啟程第二小學","en":"PLK Vicwood K.T. Chong No.2 Primary School"},"K58-U090":{"tc":"何壽基小學","en":"Ho Sau Kei Primary School"},"K58-U100":{"tc":"良景邨","en":"Leung King Estate"},"K58-U110":{"tc":"輕鐵新圍站","en":"LR San Wai Stop"},"K58-U120":{"tc":"輕鐵石排站","en":"LR Shek Pai Stop"},"K58-U130":{"tc":"輕鐵鳴琴站","en":"LR Ming Kum Stop"},"K58-U140":{"tc":"輕鐵建安站","en":"LR Kin On Stop"},"K58-U150":{"tc":"港鐵屯門站","en":"MTR Tuen Mun Station"},"K58-U160":{"tc":"屯門市中心","en":"Tuen Mun Town Centre"},"K58-U170":{"tc":"屯門官立中學","en":"Tuen Mun Government Secondary School"},"K58-U180":{"tc":"恒順園","en":"Handsome Court"},"K58-U190":{"tc":"恒豐園","en":"Harvest Garden"},"K58-U200":{"tc":"三聖邨","en":"Sam Shing Estate"},"K58-U215":{"tc":"青山灣","en":"Castle Peak Beach"},"K58-U220":{"tc":"海景花園","en":"Seaview Garden"},"K58-U230":{"tc":"咖啡灣","en":"Cafeteria Beach"},"K58-U240":{"tc":"黃金泳灘","en":"Golden Beach"},"K58-U250":{"tc":"香港黃金海岸","en":"Hong Kong Gold Coast"},"K58-U260":{"tc":"愛琴海岸","en":"Aegean Coast"},"K58-U270":{"tc":"掃管笏變電站","en":"So Kwun Wat Sub-station"},"K58-U280":{"tc":"掃管笏村","en":"So Kwun Wat Tsuen"},"K58-U290":{"tc":"掃管笏 (鄭任安夫人千禧小學)","en":"So Kwun Wat (Mrs. Cheng Yam On Millennium School)"},"K58-U300":{"tc":"掃管笏路","en":"So Kwun Wat Road"},"K58-U310":{"tc":"管翠路8號","en":"8 Kwun Chui Road"},"K58-U320":{"tc":"管翠路","en":"Kwun Chui Road"},"K58-D001":{"tc":"掃管笏村","en":"So Kwun Wat Tsuen"},"K58-D002":{"tc":"掃管笏  (鄭任安夫人千禧小學)","en":"So Kwun Wat (Mrs. Cheng Yam On Millennium School)"},"K58-D003":{"tc":"掃管笏路","en":"So Kwun Wat Road"},"K58-D004":{"tc":"管翠路8號","en":"8 Kwun Chui Road"},"K58-D005":{"tc":"管翠路","en":"Kwun Chui Road"},"K58-D006":{"tc":"愛琴海岸","en":"Aegean Coast"},"K58-D007":{"tc":"香港黃金海岸","en":"Hong Kong Gold Coast"},"K58-D008":{"tc":"黃金泳灘","en":"Golden Beach"},"K58-D009":{"tc":"咖啡灣","en":"Cafeteria Beach"},"K58-D011":{"tc":"碧翠花園","en":"Bayview Terrace"},"K58-D012":{"tc":"青山灣碼頭","en":"Castle Peak Bay Pier"},"K58-D020":{"tc":"三聖邨","en":"Sam Shing Estate"},"K58-D030":{"tc":"胡陳金枝中學","en":"Mrs Aw Boon Haw Secondary School"},"K58-D040":{"tc":"青善遊樂場","en":"Tsing Sin Playground"},"K58-D050":{"tc":"置樂花園","en":"Chi Lok Fa Yuen"},"K58-D060":{"tc":"屯門官立中學","en":"Tuen Mun Government Secondary School"},"K58-D070":{"tc":"輕鐵市中心站","en":"LR Town Centre Stop"},"K58-D080":{"tc":"輕鐵屯門站 (港鐵屯門站)","en":"LR Tuen Mun Stop (MTR Tuen Mun Station)"},"K58-D090":{"tc":"輕鐵建安站","en":"LR Kin On Stop"},"K58-D100":{"tc":"輕鐵鳴琴站","en":"LR Ming Kum Stop"},"K58-D110":{"tc":"輕鐵石排站","en":"LR Shek Pai Stop"},"K58-D120":{"tc":"輕鐵新圍站","en":"LR San Wai Stop"},"K58-D130":{"tc":"輕鐵田景站","en":"LR Tin King Stop"},"K58-D140":{"tc":"青田遊樂場","en":"Tsing Tin Playground"},"K58-D150":{"tc":"建生邨樂生樓","en":"\"Lok Sang House"},"K58-D160":{"tc":"建生邨泰生樓","en":"\"Tai Sang House"},"K58-D170":{"tc":"輕鐵麒麟站","en":"LR Kei Lun Stop"},"K58-D180":{"tc":"欣田邨","en":"Yan Tin Estate"},"K58-D190":{"tc":"港鐵兆康站 (南) (輕鐵兆康站)","en":"MTR Siu Hong Station (South) (LR Siu Hong Stop)"},"K58-D193":{"tc":"彩暉花園","en":"Brilliant Garden"},"K58-D196":{"tc":"嶺南大學","en":"Lingnan University"},"K58-D200":{"tc":"倚嶺南庭","en":"South Hillcrest"},"K58-D210":{"tc":"富泰","en":"Fu Tai"},"K65-U010":{"tc":"元朗站 (輕鐵元朗站) (港鐵元朗站)","en":"Yuen Long Station (LR Yuen Long Stop) (MTR Yuen Long Station)"},"K65-U020":{"tc":"又新街","en":"Yau San Street"},"K65-U030":{"tc":"大棠路","en":"Tai Tong Road"},"K65-U040":{"tc":"康樂路","en":"Hong Lok Road"},"K65-U050":{"tc":"元朗警署","en":"Yuen Long Police Station"},"K65-U060":{"tc":"輕鐵水邊圍站","en":"LR Shui Pin Wai Stop"},"K65-U070":{"tc":"元朗公園","en":"Yuen Long Park"},"K65-U080":{"tc":"朗邊","en":"Long Bin"},"K65-U090":{"tc":"屏山屏興里","en":"\"Ping Hing Lane"},"K65-U100":{"tc":"坑尾村","en":"Hang Mei Tsuen"},"K65-U110":{"tc":"輕鐵坑尾村站","en":"LR Hang Mei Tsuen Stop"},"K65-U120":{"tc":"天盛苑 (港鐵天水圍站)","en":"Tin Shing Court (MTR Tin Shui Wai Station)"},"K65-U130":{"tc":"石埗路","en":"Shek Po Road"},"K65-U140":{"tc":"沙洲里村","en":"Sha Chau Lei Tsuen"},"K65-U150":{"tc":"廈村","en":"Ha Tsuen"},"K65-U160":{"tc":"錫降圍","en":"Shek Kong Wai"},"K65-U170":{"tc":"羅屋村","en":"Lo Uk Tsuen"},"K65-U180":{"tc":"東頭村 (南)","en":"Tung Tau Tsuen (South)"},"K65-U190":{"tc":"東頭村 (北)","en":"Tung Tau Tsuen (North)"},"K65-U200":{"tc":"鳳降村","en":"Fung Kong Tsuen"},"K65-U210":{"tc":"沙江圍","en":"Sha Kong Wai"},"K65-U220":{"tc":"新慶村","en":"San Hing Tsuen"},"K65-U230":{"tc":"流浮山","en":"Lau Fau Shan"},"K65-D010":{"tc":"流浮山","en":"Lau Fau Shan"},"K65-D020":{"tc":"新慶村","en":"San Hing Tsuen"},"K65-D030":{"tc":"沙江圍","en":"Sha Kong Wai"},"K65-D040":{"tc":"鳳降村","en":"Fung Kong Tsuen"},"K65-D050":{"tc":"東頭村","en":"Tung Tau Tsuen"},"K65-D060":{"tc":"羅屋村","en":"Lo Uk Tsuen"},"K65-D070":{"tc":"錫降圍","en":"Shek Kong Wai"},"K65-D080":{"tc":"廈村","en":"Ha Tsuen"},"K65-D090":{"tc":"沙洲里村","en":"Sha Chau Lei Tsuen"},"K65-D100":{"tc":"天盛苑 (港鐵天水圍站)","en":"Tin Shing Court (MTR Tin Shui Wai Station)"},"K65-D110":{"tc":"輕鐵坑尾村站","en":"LR Hang Mei Tsuen Stop"},"K65-D120":{"tc":"坑尾村","en":"Hang Mei Tsuen"},"K65-D130":{"tc":"屏山屏興里","en":"\"Ping Hing Lane"},"K65-D140":{"tc":"輕鐵屏山站","en":"LR Ping Shan Stop"},"K65-D150":{"tc":"輕鐵水邊圍站","en":"LR Shui Pin Wai Stop"},"K65-D160":{"tc":"元朗廣場","en":"Yuen Long Plaza"},"K65-D170":{"tc":"開心廣場","en":"Yuen Long Landmark"},"K65-D180":{"tc":"谷亭街","en":"Kuk Ting Street"},"K65-D190":{"tc":"\"元朗站 (輕鐵元朗站","en":"港鐵元朗站)\""},"K65A-U010":{"tc":"天水圍站 (輕鐵天水圍站)","en":"Tin Shui Wai Station (LR Tin Shui Wai Stop)"},"K65A-U020":{"tc":"天盛苑 (港鐵天水圍站)","en":"Tin Shing Court (MTR Tin Shui Wai Station)"},"K65A-U030":{"tc":"石埗路","en":"Shek Po Road"},"K65A-U040":{"tc":"沙洲里村","en":"Sha Chau Lei Tsuen"},"K65A-U050":{"tc":"廈村","en":"Ha Tsuen"},"K65A-U060":{"tc":"錫降圍","en":"Shek Kong Wai"},"K65A-U070":{"tc":"羅屋村","en":"Lo Uk Tsuen"},"K65A-U080":{"tc":"東頭村 (南)","en":"Tung Tau Tsuen (South)"},"K65A-U090":{"tc":"東頭村 (北)","en":"Tung Tau Tsuen (North)"},"K65A-U100":{"tc":"鳳降村","en":"Fung Kong Tsuen"},"K65A-U110":{"tc":"沙江圍","en":"Sha Kong Wai"},"K65A-U120":{"tc":"新慶村","en":"San Hing Tsuen"},"K65A-U130":{"tc":"流浮山","en":"Lau Fau Shan"},"K65A-D010":{"tc":"流浮山","en":"Lau Fau Shan"},"K65A-D020":{"tc":"新慶村","en":"San Hing Tsuen"},"K65A-D030":{"tc":"沙江圍","en":"Sha Kong Wai"},"K65A-D040":{"tc":"鳳降村","en":"Fung Kong Tsuen"},"K65A-D050":{"tc":"東頭村","en":"Tung Tau Tsuen"},"K65A-D060":{"tc":"羅屋村","en":"Lo Uk Tsuen"},"K65A-D070":{"tc":"錫降圍","en":"Shek Kong Wai"},"K65A-D080":{"tc":"廈村","en":"Ha Tsuen"},"K65A-D090":{"tc":"沙洲里村","en":"Sha Chau Lei Tsuen"},"K65A-D100":{"tc":"天盛苑 (港鐵天水圍站)","en":"Tin Shing Court (MTR Tin Shui Wai Station)"},"K65A-D110":{"tc":"天水圍站 (輕鐵天水圍站)","en":"Tin Shui Wai Station (LR Tin Shui Wai Stop)"},"K66-U010":{"tc":"朗屏","en":"Long Ping"},"K66-U020":{"tc":"楊屋村","en":"Yeung Uk Tsuen"},"K66-U030":{"tc":"屏昌徑 (港鐵朗屏站)","en":"Ping Cheong Path (MTR Long Ping Station)"},"K66-U040":{"tc":"元朗盲人安老院","en":"Yuen Long Home for the Aged Blind"},"K66-U050":{"tc":"元朗大會堂 (輕鐵豐年路站)","en":"Yuen Long Town Hall (LR Fung Nin Road Stop)"},"K66-U060":{"tc":"安康路","en":"On Hong Road"},"K66-U070":{"tc":"元朗商業中心","en":"Yuen Long Commercial Centre"},"K66-U080":{"tc":"富達廣場","en":"Manhattan Plaza"},"K66-U090":{"tc":"蝶翠峰","en":"Sereno Verde"},"K66-U100":{"tc":"禮修村","en":"Fraser Village"},"K66-U110":{"tc":"深涌村","en":"Sham Chung Tsuen"},"K66-U120":{"tc":"羅家園","en":"Law Ka Yuen"},"K66-U130":{"tc":"崇正公立學校","en":"Shung Ching School"},"K66-U140":{"tc":"崇正菜站","en":"Shung Ching Vegetable Market"},"K66-U150":{"tc":"老圍","en":"Lo Wai"},"K66-U160":{"tc":"振華花園","en":"Chun Wah Villas"},"K66-U170":{"tc":"南坑排","en":"Nam Hang Pai"},"K66-U180":{"tc":"水蕉新村","en":"Shui Chiu San Tsuen"},"K66-U190":{"tc":"華苑","en":"Wah Yuen"},"K66-U200":{"tc":"大棠迴旋處","en":"Tai Tong Roundabout"},"K66-U210":{"tc":"大棠山路","en":"Tai Tong Shan Road"},"K66-U220":{"tc":"大棠黃泥墩村","en":"Tai Tong Wong Nai Tun Tsuen"},"K66-D010":{"tc":"大棠黃泥墩村","en":"Tai Tong Wong Nai Tun Tsuen"},"K66-D020":{"tc":"大棠山路","en":"Tai Tong Shan Road"},"K66-D030":{"tc":"大棠迴旋處","en":"Tai Tong Roundabout"},"K66-D040":{"tc":"華苑","en":"Wah Yuen"},"K66-D050":{"tc":"水蕉新村","en":"Shui Chiu San Tsuen"},"K66-D060":{"tc":"南坑排","en":"Nam Hang Pai"},"K66-D070":{"tc":"南坑村","en":"Nam Hang Tsuen"},"K66-D080":{"tc":"紅棗田村","en":"Hung Tso Tin Tsuen"},"K66-D090":{"tc":"普盛圍","en":"Po Shing Wai"},"K66-D100":{"tc":"崇正公立學校","en":"Shung Ching School"},"K66-D110":{"tc":"羅家園","en":"Law Ka Yuen"},"K66-D120":{"tc":"深涌村","en":"Sham Chung Tsuen"},"K66-D130":{"tc":"禮修村","en":"Fraser Village"},"K66-D140":{"tc":"蝶翠峰","en":"Sereno Verde"},"K66-D150":{"tc":"恆香製餅廠","en":"Hang Heung Cake Shop"},"K66-D160":{"tc":"富達廣場","en":"Manhattan Plaza"},"K66-D170":{"tc":"千色廣場","en":"Citi Mall"},"K66-D180":{"tc":"安康路","en":"On Hong Road"},"K66-D190":{"tc":"元朗大會堂","en":"Yuen Long Town Hall"},"K66-D200":{"tc":"水邊圍邨康水樓","en":"\"Hong Shui House"},"K66-D210":{"tc":"朗屏邨悅屏樓","en":"\"Yuet Ping House"},"K66-D220":{"tc":"惠州學校","en":"Wai Chow School"},"K66-D230":{"tc":"朗屏邨珠屏樓","en":"\"Chu Ping House"},"K66-D240":{"tc":"朗屏","en":"Long Ping"},"K68-U010":{"tc":"元朗工業邨","en":"Yuen Long Industrial Estate"},"K68-U020":{"tc":"凸版資訊卡","en":"Toppan Forms Card Tech Ltd"},"K68-U030":{"tc":"雀巢","en":"Nestle (HK) Ltd"},"K68-U040":{"tc":"元朗污水處理廠","en":"Yuen Long Sewage Treatment Works"},"K68-U050":{"tc":"位元堂藥業大廈","en":"Wai Yuen Tong Medicine Building"},"K68-U060":{"tc":"東電化電子零件","en":"TDK Manufacturing (HK) Co Ltd"},"K68-U070":{"tc":"凸版印刷","en":"Toppan Printing Co (HK) Ltd"},"K68-U080":{"tc":"匯泉國際實業","en":"Telford International Industries Ltd"},"K68-U090":{"tc":"橫洲福慶村","en":"Wang Chau Fuk Hing Tsuen"},"K68-U100":{"tc":"朗屏","en":"Long Ping"},"K68-U110":{"tc":"楊屋村","en":"Yeung Uk Tsuen"},"K68-U120":{"tc":"屏昌徑 (港鐵朗屏站)","en":"Ping Cheong Path (MTR Long Ping Station)"},"K68-U130":{"tc":"元朗盲人安老院","en":"Yuen Long Home for the Aged Blind"},"K68-U140":{"tc":"聿修堂 (輕鐵豐年路站)","en":"Lut Sau Hall (LR Fung Nin Road Stop)"},"K68-U150":{"tc":"元朗劇院","en":"Yuen Long Theatre"},"K68-U160":{"tc":"銀田花園","en":"Silver Field Garden"},"K68-U170":{"tc":"南元朗官立小學","en":"South Yuen Long Government Primary School"},"K68-D010":{"tc":"元朗公園","en":"Yuen Long Park"},"K68-D020":{"tc":"御豪山莊","en":"Park Royale"},"K68-D030":{"tc":"藝典居","en":"Villa Art Deco"},"K68-D040":{"tc":"御庭居","en":"Springdale Villas"},"K68-D050":{"tc":"元朗游泳池","en":"Yuen Long Swimming Pool"},"K68-D060":{"tc":"元朗大會堂","en":"Yuen Long Town Hall"},"K68-D070":{"tc":"元朗廣場","en":"Yuen Long Plaza"},"K68-D080":{"tc":"元朗安寧路","en":"Yuen Long On Ning Road"},"K68-D090":{"tc":"大橋村","en":"Tai Kiu Tsuen"},"K68-D100":{"tc":"惠州學校","en":"Wai Chow School"},"K68-D110":{"tc":"朗屏邨珠屏樓","en":"\"Chu Ping House"},"K68-D120":{"tc":"朗屏","en":"Long Ping"},"K68-D130":{"tc":"橫洲福慶村","en":"Wang Chau Fuk Hing Tsuen"},"K68-D140":{"tc":"元朗紡織品","en":"Yuen Long Textile Co Ltd"},"K68-D150":{"tc":"大昌行食品加工及物流中心","en":"DCH Food Processing & Logistics Centre"},"K68-D160":{"tc":"有生鉛水(熱浸鋅)","en":"Yau Sang Galvanizers (Hot-Dip) Co Ltd"},"K68-D170":{"tc":"余仁生中心","en":"Eu Yan Sang Centre"},"K68-D180":{"tc":"元朗污水處理廠","en":"Yuen Long Sewage Treatment Works"},"K68-D190":{"tc":"雀巢","en":"Nestle (HK) Ltd"},"K68-D200":{"tc":"牛尾香港","en":"Ushio HK Ltd"},"K68-U011":{"tc":"元朗工業邨","en":"Yuen Long Industrial Estate"},"K73-U010":{"tc":"天恆","en":"Tin Heng"},"K73-U020":{"tc":"天逸邨逸潭樓","en":"\"Yat Tam House"},"K73-U030":{"tc":"天逸邨逸洋樓","en":"\"Yat Yeung House"},"K73-U040":{"tc":"天晴邨晴碧樓","en":"\"Ching Pik House"},"K73-U050":{"tc":"香港青年協會李兆基書院","en":"HKFYG Lee Shau Kee College"},"K73-U060":{"tc":"天葵路美湖居","en":"\"Maywood Court"},"K73-U070":{"tc":"天城路景湖居","en":"\"Kenswood Court"},"K73-U080":{"tc":"天慈邨","en":"Tin Tsz Estate"},"K73-U090":{"tc":"鳳池村","en":"Fung Chi Tsuen"},"K73-U100":{"tc":"朗屏","en":"Long Ping"},"K73-U110":{"tc":"元朗盲人安老院","en":"Yuen Long Home for the Aged Blind"},"K73-U120":{"tc":"元朗西","en":"Yuen Long West"},"K73-D010":{"tc":"元朗西 (輕鐵豐年路站)","en":"Yuen Long West (LR Fung Nin Road Stop)"},"K73-D020":{"tc":"元朗安寧路","en":"Yuen Long On Ning Road"},"K73-D030":{"tc":"大橋村 (港鐵朗屏站)","en":"Tai Kiu Tsuen (MTR Long Ping Station)"},"K73-D040":{"tc":"惠州學校","en":"Wai Chow School"},"K73-D050":{"tc":"朗屏邨珠屏樓","en":"\"Chu Ping House"},"K73-D070":{"tc":"朗屏 (巴士總站)","en":"Long Ping (Bus Terminus)"},"K73-D080":{"tc":"鳳池村","en":"Fung Chi Tsuen"},"K73-D090":{"tc":"輕鐵天慈站","en":"LR Tin Tsz Stop"},"K73-D100":{"tc":"天水圍游泳池","en":"Tin Shui Wai Swimming Pool"},"K73-D110":{"tc":"天龍路景湖居","en":"\"Kenswood Court"},"K73-D120":{"tc":"天葵路麗湖居","en":"\"Lynwood Court"},"K73-D130":{"tc":"天晴邨晴雲樓","en":"\"Ching Wan House"},"K73-D140":{"tc":"天富苑能富閣","en":"\"Nang Fu House"},"K73-D150":{"tc":"天澤邨","en":"Tin Chak Estate"},"K73-D160":{"tc":"天恆","en":"Tin Heng"},"K73-U025":{"tc":"天恩","en":"Tin Yan"},"K73-U045":{"tc":"天悅邨","en":"Tin Yuet Estate"},"K74-U001":{"tc":"天水圍市中心","en":"Tin Shui Wai Town Centre"},"K74-U004":{"tc":"天頌苑頌棋閣","en":"Chung Ki House Tin Chung Court"},"K74-U007":{"tc":"天頌苑","en":"Tin Chung Court"},"K74-U010":{"tc":"天瑞","en":"Tin Shui"},"K74-U020":{"tc":"天水圍公園","en":"Tin Shui Wai Park"},"K74-U030":{"tc":"天慈邨","en":"Tin Tsz Estate"},"K74-U040":{"tc":"鳳池村","en":"Fung Chi Tsuen"},"K74-U050":{"tc":"朗屏 (巴士總站)","en":"Long Ping (Bus Terminus)"},"K74-U060":{"tc":"元朗盲人安老院","en":"Yuen Long Home for the Aged Blind"},"K74-U070":{"tc":"元朗廣場 (輕鐵豐年路站)","en":"Yuen Long Plaza (LR Fung Nin Road Stop)"},"K74-U080":{"tc":"開心廣場","en":"Yuen Long Landmark"},"K74-U090":{"tc":"港鐵元朗站(朗日路)  (港鐵元朗站)","en":"MTR Yuen Long Station (Long Yat Road) (MTR Yuen Long Station)"},"K74-U100":{"tc":"博愛醫院","en":"Pok Oi Hospital"},"K74-D010":{"tc":"東成里","en":"Tung Shing Lei"},"K74-D020":{"tc":"東華三院馬振玉中學(近朗善邨)","en":"TWGHs C.Y.Ma Memorial College (near Long Shin Estate)"},"K74-D030":{"tc":"大橋村 (港鐵朗屏站)","en":"Tai Kiu Tsuen (MTR Long Ping Station)"},"K74-D040":{"tc":"惠州學校","en":"Wai Chow School"},"K74-D050":{"tc":"朗屏邨珠屏樓","en":"\"Chu Ping House"},"K74-D060":{"tc":"朗屏 (巴士總站)","en":"Long Ping (Bus Terminus)"},"K74-D070":{"tc":"鳳池村","en":"Fung Chi Tsuen"},"K74-D080":{"tc":"輕鐵天慈站","en":"LR Tin Tsz Stop"},"K74-D090":{"tc":"天水圍公園","en":"Tin Shui Wai Park"},"K74-U011":{"tc":"天瑞","en":"Tin Shui"},"K74-D100":{"tc":"天華邨","en":"Tin Wah Estate"},"K74-D110":{"tc":"天悅邨","en":"Tin Yuet Estate"},"K74-U002":{"tc":"天水圍市中心","en":"Tin Shui Wai Town Centre"},"K75A-U010":{"tc":"天水圍站 (輕鐵天水圍站)","en":"Tin Shui Wai Station (LR Tin Shui Wai Stop)"},"K75A-U020":{"tc":"天盛苑 (港鐵天水圍站)","en":"Tin Shing Court (MTR Tin Shui Wai Station)"},"K75A-U030":{"tc":"石埗村","en":"Shek Po Tsuen"},"K75A-D010":{"tc":"輕鐵洪水橋站","en":"LR Hung Shui Kiu Stop"},"K75A-D020":{"tc":"鄉事委員會","en":"Rural Committee"},"K75A-D030":{"tc":"田心","en":"Tin Sam"},"K75A-D040":{"tc":"新李屋村","en":"San Lee Uk Tsuen"},"K75A-D050":{"tc":"新生村","en":"San Sang Tsuen"},"K75A-D060":{"tc":"李屋村","en":"Lee Uk Tsuen"},"K75A-D070":{"tc":"新屋村","en":"San Uk Tsuen"},"K75A-D080":{"tc":"廈村市","en":"Ha Tsuen Shi"},"K75A-D090":{"tc":"廈村","en":"Ha Tsuen"},"K75A-D100":{"tc":"沙洲里村","en":"Sha Chau Lei Tsuen"},"K75A-D110":{"tc":"天盛苑 (港鐵天水圍站)","en":"Tin Shing Court (MTR Tin Shui Wai Station)"},"K75A-U011":{"tc":"天水圍站 (輕鐵天水圍站)","en":"Tin Shui Wai Station (LR Tin Shui Wai Stop)"},"K75P-U010":{"tc":"天瑞","en":"Tin Shui"},"K75P-U020":{"tc":"天水圍公園","en":"Tin Shui Wai Park"},"K75P-U030":{"tc":"天耀邨耀盛樓","en":"\"Yiu Shing House"},"K75P-U040":{"tc":"輕鐵天耀站","en":"LR Tin Yiu Stop"},"K75P-U050":{"tc":"天盛苑 (港鐵天水圍站)","en":"Tin Shing Court (MTR Tin Shui Wai Station)"},"K75P-U060":{"tc":"石埗路","en":"Shek Po Road"},"K75P-U070":{"tc":"沙洲里村","en":"Sha Chau Lei Tsuen"},"K75P-U080":{"tc":"廈村市","en":"Ha Tsuen Shi"},"K75P-U090":{"tc":"新屋村","en":"San Uk Tsuen"},"K75P-U100":{"tc":"李屋村","en":"Lee Uk Tsuen"},"K75P-U110":{"tc":"新生村","en":"San Sang Tsuen"},"K75P-U120":{"tc":"新李屋村","en":"San Lee Uk Tsuen"},"K75P-U130":{"tc":"田心","en":"Tin Sam"},"K75P-U140":{"tc":"鄉事委員會","en":"Rural Committee"},"K75P-D010":{"tc":"輕鐵洪水橋站","en":"LR Hung Shui Kiu Stop"},"K75P-D020":{"tc":"洪水橋巴士廠","en":"Hung Shui Kiu Bus Depot"},"K75P-D030":{"tc":"洪福邨","en":"Hung Fuk Estate"},"K75P-D040":{"tc":"石埗村","en":"Shek Po Tsuen"},"K75P-D050":{"tc":"天盛苑","en":"Tin Shing Court"},"K75P-D060":{"tc":"天水圍警署","en":"Tin Shui Wai Police Station"},"K75P-D070":{"tc":"賞湖居","en":"Sherwood Court"},"K75P-D080":{"tc":"天水圍公園","en":"Tin Shui Wai Park"},"K75P-U011":{"tc":"天瑞","en":"Tin Shui"},"K75S-U040":{"tc":"洪水橋巴士廠","en":"Hung Shui Kiu Bus Depot"},"K75S-D010":{"tc":"洪福邨","en":"Hung Fuk Estate"},"K75S-D020":{"tc":"石埗村","en":"Shek Po Tsuen"},"K75S-D030":{"tc":"天盛苑","en":"Tin Shing Court"},"K75S-U011":{"tc":"天水圍站","en":"Tin Shui Wai Station"},"K75S-U010":{"tc":"天水圍站","en":"Tin Shui Wai Station"},"K75S-U020":{"tc":"天盛苑","en":"Tin Shing Court"},"K75S-U030":{"tc":"石埗村","en":"Shek Po Tsuen"},"K76-U010":{"tc":"天恆","en":"Tin Heng"},"K76-U020":{"tc":"天逸邨逸潭樓","en":"\"Yat Tam House"},"K76-U030":{"tc":"天富苑欣富閣","en":"\"Yan Fu House"},"K76-U040":{"tc":"天盛苑 (港鐵天水圍站)","en":"Tin Shing Court (MTR Tin Shui Wai Station)"},"K76-U050":{"tc":"天水圍站 (港鐵天水圍站)","en":"Tin Shui Wai Station (MTR Tin Shui Wai Station)"},"K76-D010":{"tc":"天水圍站 (港鐵天水圍站)","en":"Tin Shui Wai Station (MTR Tin Shui Wai Station)"},"K76-D020":{"tc":"天恩邨","en":"Tin Yan Estate"},"K76-D030":{"tc":"天澤邨","en":"Tin Chak Estate"},"K76-D040":{"tc":"天恆","en":"Tin Heng"},"K76S-U010":{"tc":"濕地公園路(近天葵路)","en":"Wetland Park Road (near Tin Kwai Road)"},"K76S-U015":{"tc":"輕鐵濕地公園站","en":"LR Wetland Park Stop"},"K76S-U020":{"tc":"天逸邨逸潭樓","en":"\"Yat Tam House"},"K76S-U030":{"tc":"天富苑欣富閣","en":"\"Yan Fu House"},"K76S-U040":{"tc":"天盛苑","en":"Tin Shing Court"},"K76S-D010":{"tc":"天水圍站","en":"Tin Shui Wai Station"},"K76S-D020":{"tc":"天恩邨","en":"Tin Yan Estate"},"K76S-D030":{"tc":"天澤邨","en":"Tin Chak Estate"},"K76S-D040":{"tc":"輕鐵濕地公園站","en":"LR Wetland Park Stop"},"K76S-D050":{"tc":"濕地公園路(近天葵路)","en":"Wetland Park Road (near Tin Kwai Road)"}};
+const MTR_ROUTES = {"K12":[{"seq":1,"code":"K12-U010","tc":"大埔墟站","en":"Tai Po Market Station","dir":"O"},{"seq":2,"code":"K12-U020","tc":"大埔超級城","en":"Tai Po Mega Mall","dir":"O"},{"seq":3,"code":"K12-U030","tc":"八號花園","en":"Eightland Garden","dir":"O"},{"seq":1,"code":"K12-D010","tc":"八號花園","en":"Eightland Garden","dir":"I"},{"seq":2,"code":"K12-D020","tc":"大埔超級城","en":"Tai Po Mega Mall","dir":"I"},{"seq":3,"code":"K12-D030","tc":"新達廣場","en":"Uptown Plaza","dir":"I"},{"seq":4,"code":"K12-D040","tc":"大埔墟站","en":"Tai Po Market Station","dir":"I"}],"K14":[{"seq":1,"code":"K14-D010","tc":"大埔超級城","en":"Tai Po Mega Mall","dir":"O"},{"seq":2,"code":"K14-D020","tc":"新達廣場","en":"Uptown Plaza","dir":"O"},{"seq":3,"code":"K14-D030","tc":"大埔墟站","en":"Tai Po Market Station","dir":"O"}],"K17":[{"seq":1,"code":"K17-U010","tc":"大埔墟站","en":"Tai Po Market Station","dir":"O"},{"seq":2,"code":"K17-U020","tc":"大埔中心第五期","en":"Tai Po Centre Phase 5","dir":"O"},{"seq":3,"code":"K17-U030","tc":"怡雅苑","en":"Yee Nga Court","dir":"O"},{"seq":4,"code":"K17-U040","tc":"富善","en":"Fu Shin","dir":"O"},{"seq":1,"code":"K17-D010","tc":"富善","en":"Fu Shin","dir":"I"},{"seq":2,"code":"K17-D020","tc":"新達廣場","en":"Uptown Plaza","dir":"I"},{"seq":3,"code":"K17-D030","tc":"大埔墟站","en":"Tai Po Market Station","dir":"I"}],"K18":[{"seq":1,"code":"K18-U010","tc":"大埔墟站","en":"Tai Po Market Station","dir":"O"},{"seq":2,"code":"K18-U020","tc":"宏福苑","en":"Wang Fuk Court","dir":"O"},{"seq":3,"code":"K18-U030","tc":"廣福","en":"Kwong Fuk","dir":"O"},{"seq":1,"code":"K18-D010","tc":"廣福","en":"Kwong Fuk","dir":"I"},{"seq":2,"code":"K18-D020","tc":"新達廣場","en":"Uptown Plaza","dir":"I"},{"seq":3,"code":"K18-D030","tc":"大埔墟站","en":"Tai Po Market Station","dir":"I"}],"506":[{"seq":1,"code":"506-U010","tc":"屯門碼頭","en":"Tuen Mun Ferry Pier","dir":"O"},{"seq":2,"code":"506-U020","tc":"美樂花園","en":"Melody Garden","dir":"O"},{"seq":3,"code":"506-U030","tc":"輕鐵蝴蝶站","en":"LR Butterfly Stop","dir":"O"},{"seq":4,"code":"506-U040","tc":"輕鐵車廠站","en":"Light Rail Depot Stop","dir":"O"},{"seq":5,"code":"506-U050","tc":"輕鐵龍門站","en":"LR Lung Mun Stop","dir":"O"},{"seq":6,"code":"506-U060","tc":"輕鐵青雲站","en":"LR Tsing Wun Stop","dir":"O"},{"seq":7,"code":"506-U070","tc":"輕鐵建安站","en":"LR Kin On Stop","dir":"O"},{"seq":8,"code":"506-U080","tc":"港鐵屯門站","en":"MTR Tuen Mun Station","dir":"O"},{"seq":9,"code":"506-U090","tc":"屯門市中心","en":"Tuen Mun Town Centre","dir":"O"},{"seq":10,"code":"506-U100","tc":"安定邨","en":"On Ting Estate","dir":"O"},{"seq":11,"code":"506-U110","tc":"輕鐵三聖站","en":"LR Sam Shing Stop","dir":"O"},{"seq":12,"code":"506-U120","tc":"兆麟","en":"Siu Lun","dir":"O"},{"seq":1,"code":"506-D010","tc":"兆麟","en":"Siu Lun","dir":"I"},{"seq":2,"code":"506-D020","tc":"友愛邨","en":"Yau Oi Estate","dir":"I"},{"seq":3,"code":"506-D030","tc":"輕鐵市中心站","en":"LR Town Centre Stop","dir":"I"},{"seq":4,"code":"506-D040","tc":"輕鐵屯門站","en":"LR Tuen Mun Stop","dir":"I"},{"seq":5,"code":"506-D050","tc":"輕鐵建安站","en":"LR Kin On Stop","dir":"I"},{"seq":6,"code":"506-D060","tc":"輕鐵青雲站","en":"LR Tsing Wun Stop","dir":"I"},{"seq":7,"code":"506-D070","tc":"聖彼得堂","en":"SKH St. Peter's Church","dir":"I"},{"seq":8,"code":"506-D080","tc":"富健花園","en":"Glorious Garden","dir":"I"},{"seq":9,"code":"506-D090","tc":"新屯門中心","en":"Sun Tuen Mun Centre","dir":"I"},{"seq":10,"code":"506-D100","tc":"輕鐵蝴蝶站","en":"LR Butterfly Stop","dir":"I"},{"seq":11,"code":"506-D110","tc":"蝴蝶邨蝶心樓","en":"\"Tip Sum House","dir":"I"},{"seq":12,"code":"506-D120","tc":"湖景邨湖碧樓","en":"\"Wu Pik House","dir":"I"},{"seq":13,"code":"506-D130","tc":"海翠花園","en":"Pierhead Garden","dir":"I"},{"seq":14,"code":"506-D140","tc":"屯門碼頭","en":"Tuen Mun Ferry Pier","dir":"I"},{"seq":1,"code":"506-U045","tc":"富健花園","en":"Glorious Garden","dir":"O"},{"seq":2,"code":"506-U050","tc":"輕鐵龍門站","en":"LR Lung Mun Stop","dir":"O"},{"seq":3,"code":"506-U060","tc":"輕鐵青雲站","en":"LR Tsing Wun Stop","dir":"O"},{"seq":4,"code":"506-U070","tc":"輕鐵建安站","en":"LR Kin On Stop","dir":"O"},{"seq":5,"code":"506-U075","tc":"屯門站","en":"Tuen Mun Station","dir":"O"}],"K51":[{"seq":1,"code":"K51-U010","tc":"富泰","en":"Fu Tai","dir":"O"},{"seq":2,"code":"K51-U020","tc":"聚康山莊","en":"Beneville","dir":"O"},{"seq":3,"code":"K51-U030","tc":"嶺南大學","en":"Lingnan University","dir":"O"},{"seq":4,"code":"K51-U040","tc":"彩暉花園","en":"Brilliant Garden","dir":"O"},{"seq":5,"code":"K51-U050","tc":"港鐵兆康站 (南) (輕鐵兆康站)","en":"MTR Siu Hong Station (South) (LR Siu Hong Stop)","dir":"O"},{"seq":6,"code":"K51-U060","tc":"井財街","en":"Tseng Choi Street","dir":"O"},{"seq":7,"code":"K51-U070","tc":"雅都商場","en":"ACME Shopping Arcade","dir":"O"},{"seq":8,"code":"K51-U080","tc":"德政圍 (港鐵屯門站)","en":"Tak Ching Court (MTR Tuen Mun Station)","dir":"O"},{"seq":9,"code":"K51-U090","tc":"屯門市中心 (輕鐵市中心站)","en":"Tuen Mun Town Centre (LR Town Centre Stop)","dir":"O"},{"seq":10,"code":"K51-U100","tc":"屯門官立中學","en":"Tuen Mun Government Secondary School","dir":"O"},{"seq":11,"code":"K51-U110","tc":"恒順園","en":"Handsome Court","dir":"O"},{"seq":12,"code":"K51-U120","tc":"恒豐園","en":"Harvest Garden","dir":"O"},{"seq":13,"code":"K51-U130","tc":"三聖邨","en":"Sam Shing Estate","dir":"O"},{"seq":14,"code":"K51-U140","tc":"青山灣","en":"Castle Peak Beach","dir":"O"},{"seq":15,"code":"K51-U150","tc":"海景花園","en":"Seaview Garden","dir":"O"},{"seq":16,"code":"K51-U160","tc":"咖啡灣","en":"Cafeteria Beach","dir":"O"},{"seq":17,"code":"K51-U170","tc":"黃金泳灘","en":"Golden Beach","dir":"O"},{"seq":18,"code":"K51-U180","tc":"香港黃金海岸","en":"Hong Kong Gold Coast","dir":"O"},{"seq":19,"code":"K51-U190","tc":"嘉禾里村","en":"Kar Wo Lei Tsuen","dir":"O"},{"seq":20,"code":"K51-U200","tc":"小秀村","en":"Siu Sau Tsuen","dir":"O"},{"seq":21,"code":"K51-U210","tc":"愛琴灣","en":"The Aegean","dir":"O"},{"seq":22,"code":"K51-U220","tc":"小欖新村","en":"Siu Lam San Tsuen","dir":"O"},{"seq":23,"code":"K51-U230","tc":"小欖村","en":"Siu Lam Tsuen","dir":"O"},{"seq":24,"code":"K51-U240","tc":"小欖澄麗路","en":"Ching Lai Road Siu Lam","dir":"O"},{"seq":25,"code":"K51-U250","tc":"大欖","en":"Tai Lam","dir":"O"},{"seq":1,"code":"K51-D010","tc":"大欖","en":"Tai Lam","dir":"I"},{"seq":2,"code":"K51-D020","tc":"小欖","en":"Siu Lam","dir":"I"},{"seq":3,"code":"K51-D030","tc":"小欖澄麗路","en":"Ching Lai Road Siu Lam","dir":"I"},{"seq":4,"code":"K51-D040","tc":"小欖村","en":"Siu Lam Tsuen","dir":"I"},{"seq":5,"code":"K51-D050","tc":"小欖新村","en":"Siu Lam San Tsuen","dir":"I"},{"seq":6,"code":"K51-D060","tc":"愛琴灣","en":"The Aegean","dir":"I"},{"seq":7,"code":"K51-D070","tc":"小秀上村","en":"Siu Sau Sheung Tsuen","dir":"I"},{"seq":8,"code":"K51-D080","tc":"龍珠島","en":"Pearl Island","dir":"I"},{"seq":9,"code":"K51-D090","tc":"香港黃金海岸","en":"Hong Kong Gold Coast","dir":"I"},{"seq":10,"code":"K51-D100","tc":"黃金泳灘","en":"Golden Beach","dir":"I"},{"seq":11,"code":"K51-D110","tc":"咖啡灣","en":"Cafeteria Beach","dir":"I"},{"seq":12,"code":"K51-D120","tc":"碧翠花園","en":"Bayview Terrace","dir":"I"},{"seq":13,"code":"K51-D130","tc":"青山灣碼頭","en":"Castle Peak Bay Pier","dir":"I"},{"seq":14,"code":"K51-D140","tc":"三聖邨","en":"Sam Shing Estate","dir":"I"},{"seq":15,"code":"K51-D150","tc":"恆福花園 (輕鐵三聖站)","en":"Hanford Garden (LR Sam Shing Stop)","dir":"I"},{"seq":16,"code":"K51-D160","tc":"胡陳金枝中學","en":"Mrs Aw Boon Haw Secondary School","dir":"I"},{"seq":17,"code":"K51-D170","tc":"青善遊樂場","en":"Tsing Sin Playground","dir":"I"},{"seq":18,"code":"K51-D180","tc":"置樂花園","en":"Chi Lok Fa Yuen","dir":"I"},{"seq":19,"code":"K51-D190","tc":"屯門官立中學","en":"Tuen Mun Government Secondary School","dir":"I"},{"seq":20,"code":"K51-D200","tc":"輕鐵市中心站","en":"LR Town Centre Stop","dir":"I"},{"seq":21,"code":"K51-D210","tc":"港鐵屯門站 (輕鐵屯門站)","en":"MTR Tuen Mun Station (LR Tuen Mun Stop)","dir":"I"},{"seq":22,"code":"K51-D220","tc":"聖公會聖西門呂明才中學","en":"SKH St. Simon's Lui Ming Choi Secondary School","dir":"I"},{"seq":23,"code":"K51-D230","tc":"景峰花園","en":"Prime View Garden","dir":"I"},{"seq":24,"code":"K51-D240","tc":"輕鐵鳳地站","en":"LR Fung Tei Stop","dir":"I"},{"seq":25,"code":"K51-D250","tc":"港鐵兆康站 (南) (輕鐵兆康站)","en":"MTR Siu Hong Station (South) (LR Siu Hong Stop)","dir":"I"},{"seq":26,"code":"K51-D260","tc":"彩暉花園","en":"Brilliant Garden","dir":"I"},{"seq":27,"code":"K51-D270","tc":"嶺南大學","en":"Lingnan University","dir":"I"},{"seq":28,"code":"K51-D280","tc":"倚嶺南庭","en":"South Hillcrest","dir":"I"},{"seq":29,"code":"K51-D290","tc":"富泰","en":"Fu Tai","dir":"I"},{"seq":1,"code":"K51-U010","tc":"富泰","en":"Fu Tai","dir":"O"},{"seq":2,"code":"K51-U020","tc":"聚康山莊","en":"Beneville","dir":"O"},{"seq":3,"code":"K51-U030","tc":"嶺南大學","en":"Lingnan University","dir":"O"},{"seq":4,"code":"K51-U040","tc":"彩暉花園","en":"Brilliant Garden","dir":"O"},{"seq":5,"code":"K51-U050","tc":"港鐵兆康站 (南)","en":"MTR Siu Hong Station (South)","dir":"O"},{"seq":1,"code":"K51-D250","tc":"港鐵兆康站 (南)","en":"MTR Siu Hong Station (South)","dir":"O"},{"seq":2,"code":"K51-D260","tc":"彩暉花園","en":"Brilliant Garden","dir":"O"},{"seq":3,"code":"K51-D270","tc":"嶺南大學","en":"Lingnan University","dir":"O"},{"seq":4,"code":"K51-D280","tc":"倚嶺南庭","en":"South Hillcrest","dir":"O"},{"seq":5,"code":"K51-D290","tc":"富泰","en":"Fu Tai","dir":"O"}],"K51A":[{"seq":1,"code":"K51A-U010","tc":"富泰","en":"Fu Tai","dir":"O"},{"seq":2,"code":"K51A-U020","tc":"聚康山莊","en":"Beneville","dir":"O"},{"seq":3,"code":"K51A-U030","tc":"嶺南大學","en":"Lingnan University","dir":"O"},{"seq":4,"code":"K51A-U040","tc":"彩暉花園","en":"Brilliant Garden","dir":"O"},{"seq":5,"code":"K51A-U050","tc":"港鐵兆康站 (南) (輕鐵兆康站)","en":"MTR Siu Hong Station (South) (LR Siu Hong Stop)","dir":"O"},{"seq":6,"code":"K51A-U060","tc":"井財街","en":"Tseng Choi Street","dir":"O"},{"seq":7,"code":"K51A-U070","tc":"雅都商場","en":"ACME Shopping Arcade","dir":"O"},{"seq":8,"code":"K51A-U080","tc":"德政圍 (港鐵屯門站)","en":"Tak Ching Court (MTR Tuen Mun Station)","dir":"O"},{"seq":9,"code":"K51A-U090","tc":"屯門市中心 (輕鐵市中心站)","en":"Tuen Mun Town Centre (LR Town Centre Stop)","dir":"O"},{"seq":10,"code":"K51A-U100","tc":"屯門官立中學","en":"Tuen Mun Government Secondary School","dir":"O"},{"seq":11,"code":"K51A-U110","tc":"恒順園","en":"Handsome Court","dir":"O"},{"seq":12,"code":"K51A-U120","tc":"恒豐園","en":"Harvest Garden","dir":"O"},{"seq":13,"code":"K51A-U130","tc":"三聖邨","en":"Sam Shing Estate","dir":"O"},{"seq":14,"code":"K51A-U140","tc":"青山灣","en":"Castle Peak Beach","dir":"O"},{"seq":15,"code":"K51A-U150","tc":"海景花園","en":"Seaview Garden","dir":"O"},{"seq":16,"code":"K51A-U160","tc":"咖啡灣","en":"Cafeteria Beach","dir":"O"},{"seq":17,"code":"K51A-U170","tc":"黃金泳灘","en":"Golden Beach","dir":"O"},{"seq":18,"code":"K51A-U180","tc":"香港黃金海岸","en":"Hong Kong Gold Coast","dir":"O"},{"seq":19,"code":"K51A-U190","tc":"愛琴海岸","en":"Aegean Coast","dir":"O"},{"seq":20,"code":"K51A-U200","tc":"掃管笏變電站","en":"So Kwun Wat Sub-station","dir":"O"},{"seq":21,"code":"K51A-U210","tc":"掃管笏村","en":"So Kwun Wat Tsuen","dir":"O"},{"seq":22,"code":"K51A-U220","tc":"掃管笏 (鄭任安夫人千禧小學)","en":"So Kwun Wat (Mrs. Cheng Yam On Millennium School)","dir":"O"},{"seq":23,"code":"K51A-U230","tc":"掃管笏路","en":"So Kwun Wat Road","dir":"O"},{"seq":24,"code":"K51A-U240","tc":"管翠路8號","en":"8 Kwun Chui Road","dir":"O"},{"seq":25,"code":"K51A-U250","tc":"掃管笏村","en":"So Kwun Wat Tsuen","dir":"O"},{"seq":1,"code":"K51A-D010","tc":"掃管笏村","en":"So Kwun Wat Tsuen","dir":"I"},{"seq":2,"code":"K51A-D020","tc":"掃管笏 (鄭任安夫人千禧小學)","en":"So Kwun Wat (Mrs. Cheng Yam On Millennium School)","dir":"I"},{"seq":3,"code":"K51A-D030","tc":"掃管笏路","en":"So Kwun Wat Road","dir":"I"},{"seq":4,"code":"K51A-D040","tc":"管翠路8號","en":"8 Kwun Chui Road","dir":"I"},{"seq":5,"code":"K51A-D050","tc":"管翠路","en":"Kwun Chui Road","dir":"I"},{"seq":6,"code":"K51A-D060","tc":"愛琴海岸","en":"Aegean Coast","dir":"I"},{"seq":7,"code":"K51A-D070","tc":"香港黃金海岸","en":"Hong Kong Gold Coast","dir":"I"},{"seq":8,"code":"K51A-D080","tc":"黃金泳灘","en":"Golden Beach","dir":"I"},{"seq":9,"code":"K51A-D090","tc":"咖啡灣","en":"Cafeteria Beach","dir":"I"},{"seq":10,"code":"K51A-D100","tc":"碧翠花園","en":"Bayview Terrace","dir":"I"},{"seq":11,"code":"K51A-D110","tc":"青山灣碼頭","en":"Castle Peak Bay Pier","dir":"I"},{"seq":12,"code":"K51A-D120","tc":"三聖邨","en":"Sam Shing Estate","dir":"I"},{"seq":13,"code":"K51A-D140","tc":"胡陳金枝中學","en":"Mrs Aw Boon Haw Secondary School","dir":"I"},{"seq":14,"code":"K51A-D150","tc":"青善遊樂場","en":"Tsing Sin Playground","dir":"I"},{"seq":15,"code":"K51A-D160","tc":"置樂花園","en":"Chi Lok Fa Yuen","dir":"I"},{"seq":16,"code":"K51A-D170","tc":"屯門官立中學","en":"Tuen Mun Government Secondary School","dir":"I"},{"seq":17,"code":"K51A-D180","tc":"輕鐵市中心站","en":"LR Town Centre Stop","dir":"I"},{"seq":18,"code":"K51A-D190","tc":"港鐵屯門站 (輕鐵屯門站)","en":"MTR Tuen Mun Station (LR Tuen Mun Stop)","dir":"I"},{"seq":19,"code":"K51A-D200","tc":"聖公會聖西門呂明才中學","en":"SKH St. Simon's Lui Ming Choi Secondary School","dir":"I"},{"seq":20,"code":"K51A-D210","tc":"景峰花園","en":"Prime View Garden","dir":"I"},{"seq":21,"code":"K51A-D220","tc":"輕鐵鳳地站","en":"LR Fung Tei Stop","dir":"I"},{"seq":22,"code":"K51A-D230","tc":"港鐵兆康站 (南) (輕鐵兆康站)","en":"MTR Siu Hong Station (South) (LR Siu Hong Stop)","dir":"I"},{"seq":23,"code":"K51A-D240","tc":"彩暉花園","en":"Brilliant Garden","dir":"I"},{"seq":24,"code":"K51A-D250","tc":"嶺南大學","en":"Lingnan University","dir":"I"},{"seq":25,"code":"K51A-D260","tc":"倚嶺南庭","en":"South Hillcrest","dir":"I"},{"seq":26,"code":"K51A-D270","tc":"富泰","en":"Fu Tai","dir":"I"}],"K52":[{"seq":1,"code":"K52-nU010","tc":"悅湖山莊","en":"Yuet Wu Villa","dir":"O"},{"seq":2,"code":"K52-nU020","tc":"邁亞美海灣","en":"Miami Beach Towers","dir":"O"},{"seq":3,"code":"K52-nU030","tc":"屯門碼頭","en":"Tuen Mun Ferry Pier","dir":"O"},{"seq":4,"code":"K52-nU040","tc":"湖景邨湖畔樓","en":"\"Wu Boon House","dir":"O"},{"seq":5,"code":"K52-nU050","tc":"湖景邨湖翠樓","en":"\"Wu Tsui House","dir":"O"},{"seq":6,"code":"K52-nU060","tc":"屯門中央廣場","en":"Tuen Mun Central Square","dir":"O"},{"seq":7,"code":"K52-nU070","tc":"輕鐵三聖站","en":"LR Sam Shing Stop","dir":"O"},{"seq":8,"code":"K52-nU080","tc":"胡陳金枝中學","en":"Mrs Aw Boon Haw Secondary School","dir":"O"},{"seq":9,"code":"K52-nU090","tc":"青善遊樂場","en":"Tsing Sin Playground","dir":"O"},{"seq":10,"code":"K52-nU100","tc":"置樂花園","en":"Chi Lok Fa Yuen","dir":"O"},{"seq":11,"code":"K52-nU110","tc":"屯門官立中學","en":"Tuen Mun Government Secondary School","dir":"O"},{"seq":12,"code":"K52-nU120","tc":"輕鐵市中心站","en":"LR Town Centre Stop","dir":"O"},{"seq":13,"code":"K52-nU140","tc":"輕鐵屯門站 (港鐵屯門站)","en":"LR Tuen Mun Stop (MTR Tuen Mun Station)","dir":"O"},{"seq":14,"code":"K52-nU150","tc":"輕鐵建安站","en":"LR Kin On Stop","dir":"O"},{"seq":15,"code":"K52-nU160","tc":"輕鐵青雲站","en":"LR Tsing Wun Stop","dir":"O"},{"seq":16,"code":"K52-nU170","tc":"聖彼得堂","en":"SKH St. Peter's Church","dir":"O"},{"seq":17,"code":"K52-nU180","tc":"富健花園","en":"Glorious Garden","dir":"O"},{"seq":18,"code":"K52-nU190","tc":"新屯門中心","en":"Sun Tuen Mun Centre","dir":"O"},{"seq":19,"code":"K52-nU200","tc":"輕鐵蝴蝶站","en":"LR Butterfly Stop","dir":"O"},{"seq":20,"code":"K52-nU210","tc":"屯門公眾騎術學校","en":"Tuen Mun Public Riding School","dir":"O"},{"seq":21,"code":"K52-nU220","tc":"蝴蝶灣公園","en":"Butterfly Beach Park","dir":"O"},{"seq":22,"code":"K52-nU230","tc":"望后石","en":"Pillar Point","dir":"O"},{"seq":23,"code":"K52-nU240","tc":"政府車場","en":"Government Depot","dir":"O"},{"seq":24,"code":"K52-nU250","tc":"內河碼頭","en":"River Trade Terminal","dir":"O"},{"seq":25,"code":"K52-nU260","tc":"環保園","en":"EcoPark","dir":"O"},{"seq":26,"code":"K52-nU270","tc":"紹榮鋼鐵","en":"Shiu Wing Steel Mill","dir":"O"},{"seq":27,"code":"K52-nU280","tc":"沙埔崗312號","en":"No.312 Sha Po Kong","dir":"O"},{"seq":28,"code":"K52-nU290","tc":"沙埔崗177號","en":"No.177 Sha Po Kong","dir":"O"},{"seq":29,"code":"K52-nU300","tc":"沙埔崗127號","en":"No.127 Sha Po Kong","dir":"O"},{"seq":30,"code":"K52-nU310","tc":"龍鼓灘","en":"Lung Kwu Tan","dir":"O"},{"seq":1,"code":"K52-nD010","tc":"龍鼓灘","en":"Lung Kwu Tan","dir":"I"},{"seq":2,"code":"K52-nD020","tc":"沙埔崗127號","en":"No.127 Sha Po Kong","dir":"I"},{"seq":3,"code":"K52-nD030","tc":"沙埔崗177號","en":"No.177 Sha Po Kong","dir":"I"},{"seq":4,"code":"K52-nD040","tc":"沙埔崗288號","en":"No.288 Sha Po Kong","dir":"I"},{"seq":5,"code":"K52-nD050","tc":"沙埔崗351號","en":"No.351 Sha Po Kong","dir":"I"},{"seq":6,"code":"K52-nD060","tc":"中電 A廠","en":"CLP (Plant A)","dir":"I"},{"seq":7,"code":"K52-nD070","tc":"紹榮鋼鐵","en":"Shiu Wing Steel Mill","dir":"I"},{"seq":8,"code":"K52-nD080","tc":"環保園","en":"EcoPark","dir":"I"},{"seq":9,"code":"K52-nD090","tc":"內河碼頭","en":"River Trade Terminal","dir":"I"},{"seq":10,"code":"K52-nD100","tc":"政府車場","en":"Government Depot","dir":"I"},{"seq":11,"code":"K52-nD110","tc":"望后石","en":"Pillar Point","dir":"I"},{"seq":12,"code":"K52-nD120","tc":"蝴蝶灣公園","en":"Butterfly Beach Park","dir":"I"},{"seq":13,"code":"K52-nD130","tc":"屯門公眾騎術學校","en":"Tuen Mun Public Riding School","dir":"I"},{"seq":14,"code":"K52-nD140","tc":"輕鐵蝴蝶站","en":"LR Butterfly Stop","dir":"I"},{"seq":15,"code":"K52-nD150","tc":"輕鐵車廠站","en":"Light Rail Depot Stop","dir":"I"},{"seq":16,"code":"K52-nD160","tc":"輕鐵龍門站","en":"LR Lung Mun Stop","dir":"I"},{"seq":17,"code":"K52-nD170","tc":"輕鐵青雲站","en":"LR Tsing Wun Stop","dir":"I"},{"seq":18,"code":"K52-nD180","tc":"輕鐵建安站","en":"LR Kin On Stop","dir":"I"},{"seq":19,"code":"K52-nD190","tc":"屯門站","en":"Tuen Mun Station","dir":"I"},{"seq":20,"code":"K52-nD200","tc":"屯門市中心","en":"Tuen Mun Town Centre","dir":"I"},{"seq":21,"code":"K52-nD210","tc":"屯門官立中學","en":"Tuen Mun Government Secondary School","dir":"I"},{"seq":22,"code":"K52-nD220","tc":"恒順園","en":"Handsome Court","dir":"I"},{"seq":23,"code":"K52-nD230","tc":"恒豐園","en":"Harvest Garden","dir":"I"},{"seq":24,"code":"K52-nD240","tc":"輕鐵三聖站","en":"LR Sam Shing Stop","dir":"I"},{"seq":25,"code":"K52-nD250","tc":"屯門中央廣場","en":"Tuen Mun Central Square","dir":"I"},{"seq":26,"code":"K52-nD260","tc":"湖景邨湖翠樓","en":"\"Wu Tsui House","dir":"I"},{"seq":27,"code":"K52-nD270","tc":"兆禧苑","en":"Siu Hei Court","dir":"I"},{"seq":28,"code":"K52-nD280","tc":"海翠花園","en":"Pierhead Garden","dir":"I"},{"seq":29,"code":"K52-nD290","tc":"邁亞美海灣","en":"Miami Beach Towers","dir":"I"},{"seq":30,"code":"K52-nD300","tc":"悅湖山莊","en":"Yuet Wu Villa","dir":"I"},{"seq":1,"code":"K52-nU140","tc":"輕鐵屯門站","en":"LR Tuen Mun Stop","dir":"O"},{"seq":2,"code":"K52-nU150","tc":"輕鐵建安站","en":"LR Kin On Stop","dir":"O"},{"seq":3,"code":"K52-nU160","tc":"輕鐵青雲站","en":"LR Tsing Wun Stop","dir":"O"},{"seq":4,"code":"K52-nU170","tc":"聖彼得堂","en":"SKH St. Peter's Church","dir":"O"},{"seq":5,"code":"K52-nU180","tc":"富健花園","en":"Glorious Garden","dir":"O"},{"seq":6,"code":"K52-nU190","tc":"新屯門中心","en":"Sun Tuen Mun Centre","dir":"O"},{"seq":7,"code":"K52-nU200","tc":"輕鐵蝴蝶站","en":"LR Butterfly Stop","dir":"O"},{"seq":8,"code":"K52-nU210","tc":"屯門公眾騎術學校","en":"Tuen Mun Public Riding School","dir":"O"},{"seq":9,"code":"K52-nU220","tc":"蝴蝶灣公園","en":"Butterfly Beach Park","dir":"O"},{"seq":10,"code":"K52-nU230","tc":"望后石","en":"Pillar Point","dir":"O"},{"seq":11,"code":"K52-nU240","tc":"政府車場","en":"Government Depot","dir":"O"},{"seq":12,"code":"K52-nU250","tc":"內河碼頭","en":"River Trade Terminal","dir":"O"},{"seq":13,"code":"K52-nU260","tc":"環保園","en":"EcoPark","dir":"O"},{"seq":14,"code":"K52-nU270","tc":"紹榮鋼鐵","en":"Shiu Wing Steel Mill","dir":"O"},{"seq":15,"code":"K52-nU280","tc":"沙埔崗312號","en":"No.312 Sha Po Kong","dir":"O"},{"seq":16,"code":"K52-nU290","tc":"沙埔崗177號","en":"No.177 Sha Po Kong","dir":"O"},{"seq":17,"code":"K52-nU300","tc":"沙埔崗127號","en":"No.127 Sha Po Kong","dir":"O"},{"seq":18,"code":"K52-nU310","tc":"龍鼓灘","en":"Lung Kwu Tan","dir":"O"}],"K52P":[{"seq":1,"code":"K52P-D010","tc":"龍鼓灘","en":"Lung Kwu Tan","dir":"O"},{"seq":2,"code":"K52P-D020","tc":"沙埔崗127號","en":"No.127 Sha Po Kong","dir":"O"},{"seq":3,"code":"K52P-D030","tc":"沙埔崗177號","en":"No.177 Sha Po Kong","dir":"O"},{"seq":4,"code":"K52P-D040","tc":"沙埔崗288號","en":"No.288 Sha Po Kong","dir":"O"},{"seq":5,"code":"K52P-D050","tc":"沙埔崗351號","en":"No.351 Sha Po Kong","dir":"O"},{"seq":6,"code":"K52P-D060","tc":"中電 A廠","en":"CLP (Plant A)","dir":"O"},{"seq":7,"code":"K52P-D070","tc":"紹榮鋼鐵","en":"Shiu Wing Steel Mill","dir":"O"},{"seq":8,"code":"K52P-D080","tc":"環保園","en":"EcoPark","dir":"O"},{"seq":9,"code":"K52P-D090","tc":"內河碼頭","en":"River Trade Terminal","dir":"O"},{"seq":10,"code":"K52P-D100","tc":"政府車場","en":"Government Depot","dir":"O"},{"seq":11,"code":"K52P-D110","tc":"望后石","en":"Pillar Point","dir":"O"},{"seq":12,"code":"K52P-D120","tc":"蝴蝶灣公園","en":"Butterfly Beach Park","dir":"O"},{"seq":13,"code":"K52P-D130","tc":"屯門公眾騎術學校","en":"Tuen Mun Public Riding School","dir":"O"},{"seq":14,"code":"K52P-D140","tc":"輕鐵蝴蝶站","en":"LR Butterfly Stop","dir":"O"},{"seq":15,"code":"K52P-D150","tc":"悅湖山莊","en":"Yuet Wu Villa","dir":"O"},{"seq":16,"code":"K52P-D160","tc":"邁亞美海灣","en":"Miami Beach Towers","dir":"O"},{"seq":17,"code":"K52P-D170","tc":"屯門碼頭","en":"Tuen Mun Ferry Pier","dir":"O"},{"seq":18,"code":"K52P-D180","tc":"湖景邨湖畔樓","en":"\"Wu Boon House","dir":"O"},{"seq":19,"code":"K52P-D190","tc":"湖景邨湖翠樓","en":"\"Wu Tsui House","dir":"O"},{"seq":20,"code":"K52P-D200","tc":"兆山苑","en":"Siu Shan Court","dir":"O"},{"seq":21,"code":"K52P-D210","tc":"輕鐵車廠站","en":"Light Rail Depot Stop","dir":"O"},{"seq":22,"code":"K52P-D220","tc":"輕鐵龍門站","en":"LR Lung Mun Stop","dir":"O"},{"seq":23,"code":"K52P-D230","tc":"輕鐵青雲站","en":"LR Tsing Wun Stop","dir":"O"},{"seq":24,"code":"K52P-D240","tc":"輕鐵建安站","en":"LR Kin On Stop","dir":"O"},{"seq":25,"code":"K52P-D250","tc":"屯門站","en":"Tuen Mun Station","dir":"O"}],"K52A":[{"seq":1,"code":"K52A-U010","tc":"屯門站 (輕鐵屯門站)","en":"Tuen Mun Station (LR Tuen Mun Stop)","dir":"O"},{"seq":2,"code":"K52A-U015","tc":"輕鐵屯門站 (請留意服務時間)*","en":"LR Tuen Mun Stop (Please refer to Service Time)*","dir":"O"},{"seq":3,"code":"K52A-U020","tc":"輕鐵建安站","en":"LR Kin On Stop","dir":"O"},{"seq":4,"code":"K52A-U030","tc":"輕鐵青雲站","en":"LR Tsing Wun Stop","dir":"O"},{"seq":5,"code":"K52A-U040","tc":"聖彼得堂","en":"SKH St. Peter's Church","dir":"O"},{"seq":6,"code":"K52A-U050","tc":"富健花園","en":"Glorious Garden","dir":"O"},{"seq":7,"code":"K52A-U060","tc":"新屯門中心","en":"Sun Tuen Mun Centre","dir":"O"},{"seq":8,"code":"K52A-U070","tc":"輕鐵蝴蝶站","en":"LR Butterfly Stop","dir":"O"},{"seq":9,"code":"K52A-U080","tc":"屯門公眾騎術學校","en":"Tuen Mun Public Riding School","dir":"O"},{"seq":10,"code":"K52A-U090","tc":"蝴蝶灣公園","en":"Butterfly Beach Park","dir":"O"},{"seq":11,"code":"K52A-U100","tc":"望后石","en":"Pillar Point","dir":"O"},{"seq":12,"code":"K52A-U110","tc":"政府車場","en":"Government Depot","dir":"O"},{"seq":13,"code":"K52A-U120","tc":"內河碼頭","en":"River Trade Terminal","dir":"O"},{"seq":14,"code":"K52A-U130","tc":"環保園","en":"EcoPark","dir":"O"},{"seq":15,"code":"K52A-U140","tc":"紹榮鋼鐵","en":"Shiu Wing Steel Mill","dir":"O"},{"seq":16,"code":"K52A-U150","tc":"沙埔崗312號","en":"No.312 Sha Po Kong","dir":"O"},{"seq":17,"code":"K52A-U160","tc":"沙埔崗177號","en":"No.177 Sha Po Kong","dir":"O"},{"seq":18,"code":"K52A-U170","tc":"沙埔崗127號","en":"No.127 Sha Po Kong","dir":"O"},{"seq":19,"code":"K52A-U180","tc":"曾咀 (曾咀靈灰安置所)","en":"Tsang Tsui (Tsang Tsui Columbarium)","dir":"O"},{"seq":1,"code":"K52A-D010","tc":"曾咀 (曾咀靈灰安置所)","en":"Tsang Tsui (Tsang Tsui Columbarium)","dir":"I"},{"seq":2,"code":"K52A-D020","tc":"沙埔崗127號","en":"No.127 Sha Po Kong","dir":"I"},{"seq":3,"code":"K52A-D030","tc":"沙埔崗177號","en":"No.177 Sha Po Kong","dir":"I"},{"seq":4,"code":"K52A-D040","tc":"沙埔崗288號","en":"No.288 Sha Po Kong","dir":"I"},{"seq":5,"code":"K52A-D050","tc":"沙埔崗351號","en":"No.351 Sha Po Kong","dir":"I"},{"seq":6,"code":"K52A-D060","tc":"中電 A廠","en":"CLP (Plant A)","dir":"I"},{"seq":7,"code":"K52A-D070","tc":"紹榮鋼鐵","en":"Shiu Wing Steel Mill","dir":"I"},{"seq":8,"code":"K52A-D080","tc":"環保園","en":"EcoPark","dir":"I"},{"seq":9,"code":"K52A-D090","tc":"內河碼頭","en":"River Trade Terminal","dir":"I"},{"seq":10,"code":"K52A-D100","tc":"政府車場","en":"Government Depot","dir":"I"},{"seq":11,"code":"K52A-D110","tc":"望后石","en":"Pillar Point","dir":"I"},{"seq":12,"code":"K52A-D120","tc":"蝴蝶灣公園","en":"Butterfly Beach Park","dir":"I"},{"seq":13,"code":"K52A-D130","tc":"屯門公眾騎術學校","en":"Tuen Mun Public Riding School","dir":"I"},{"seq":14,"code":"K52A-D140","tc":"輕鐵蝴蝶站","en":"LR Butterfly Stop","dir":"I"},{"seq":15,"code":"K52A-D150","tc":"輕鐵車廠站","en":"Light Rail Depot Stop","dir":"I"},{"seq":16,"code":"K52A-D160","tc":"輕鐵龍門站","en":"LR Lung Mun Stop","dir":"I"},{"seq":17,"code":"K52A-D170","tc":"輕鐵青雲站","en":"LR Tsing Wun Stop","dir":"I"},{"seq":18,"code":"K52A-D180","tc":"輕鐵建安站","en":"LR Kin On Stop","dir":"I"},{"seq":19,"code":"K52A-D190","tc":"屯門站 (輕鐵屯門站)","en":"Tuen Mun Station (LR Tuen Mun Stop)","dir":"I"}],"K53":[{"seq":1,"code":"K53-U010","tc":"屯門站 (輕鐵屯門站)","en":"Tuen Mun Station (LR Tuen Mun Stop)","dir":"O"},{"seq":2,"code":"K53-U020","tc":"屯門市中心","en":"Tuen Mun Town Centre","dir":"O"},{"seq":3,"code":"K53-U030","tc":"屯門官立中學","en":"Tuen Mun Government Secondary School","dir":"O"},{"seq":4,"code":"K53-U040","tc":"恒順園","en":"Handsome Court","dir":"O"},{"seq":5,"code":"K53-U050","tc":"恒豐園","en":"Harvest Garden","dir":"O"},{"seq":6,"code":"K53-U060","tc":"三聖邨","en":"Sam Shing Estate","dir":"O"},{"seq":7,"code":"K53-U070","tc":"青山灣","en":"Castle Peak Beach","dir":"O"},{"seq":8,"code":"K53-U080","tc":"海景花園","en":"Seaview Garden","dir":"O"},{"seq":9,"code":"K53-U090","tc":"咖啡灣","en":"Cafeteria Beach","dir":"O"},{"seq":10,"code":"K53-U100","tc":"黃金泳灘","en":"Golden Beach","dir":"O"},{"seq":11,"code":"K53-U110","tc":"香港黃金海岸","en":"Hong Kong Gold Coast","dir":"O"},{"seq":12,"code":"K53-U120","tc":"愛琴海岸","en":"Aegean Coast","dir":"O"},{"seq":13,"code":"K53-U130","tc":"掃管笏變電站","en":"So Kwun Wat Sub-station","dir":"O"},{"seq":14,"code":"K53-U140","tc":"掃管笏村","en":"So Kwun Wat Tsuen","dir":"O"},{"seq":15,"code":"K53-D010","tc":"掃管笏 (鄭任安夫人千禧小學)","en":"So Kwun Wat (Mrs. Cheng Yam On Millennium School)","dir":"O"},{"seq":16,"code":"K53-D015","tc":"掃管笏路","en":"So Kwun Wat Road","dir":"O"},{"seq":17,"code":"K53-D020","tc":"管翠路8號","en":"8 Kwun Chui Road","dir":"O"},{"seq":18,"code":"K53-D030","tc":"管翠路","en":"Kwun Chui Road","dir":"O"},{"seq":19,"code":"K53-D040","tc":"愛琴海岸","en":"Aegean Coast","dir":"O"},{"seq":20,"code":"K53-D050","tc":"香港黃金海岸","en":"Hong Kong Gold Coast","dir":"O"},{"seq":21,"code":"K53-D060","tc":"黃金泳灘","en":"Golden Beach","dir":"O"},{"seq":22,"code":"K53-D070","tc":"咖啡灣","en":"Cafeteria Beach","dir":"O"},{"seq":23,"code":"K53-D080","tc":"碧翠花園","en":"Bayview Terrace","dir":"O"},{"seq":24,"code":"K53-D090","tc":"青山灣碼頭","en":"Castle Peak Bay Pier","dir":"O"},{"seq":25,"code":"K53-D100","tc":"三聖邨","en":"Sam Shing Estate","dir":"O"},{"seq":26,"code":"K53-D110","tc":"恆福花園 (輕鐵三聖站)","en":"Hanford Garden (LR Sam Shing Stop)","dir":"O"},{"seq":27,"code":"K53-D120","tc":"胡陳金枝中學","en":"Mrs Aw Boon Haw Secondary School","dir":"O"},{"seq":28,"code":"K53-D130","tc":"青善遊樂場","en":"Tsing Sin Playground","dir":"O"},{"seq":29,"code":"K53-D140","tc":"置樂花園","en":"Chi Lok Fa Yuen","dir":"O"},{"seq":30,"code":"K53-D150","tc":"屯門官立中學","en":"Tuen Mun Government Secondary School","dir":"O"},{"seq":31,"code":"K53-D160","tc":"輕鐵市中心站","en":"LR Town Centre Stop","dir":"O"},{"seq":32,"code":"K53-U011","tc":"屯門站 (輕鐵屯門站)","en":"Tuen Mun Station (LR Tuen Mun Stop)","dir":"O"}],"K53S":[{"seq":1,"code":"K53S-U010","tc":"屯門站","en":"Tuen Mun Station","dir":"O"},{"seq":2,"code":"K53S-U020","tc":"天后路","en":"Tin Hau Road","dir":"O"},{"seq":3,"code":"K53S-U030","tc":"業旺邨","en":"Yip Wong Estate","dir":"O"},{"seq":4,"code":"K53S-U040","tc":"屯門站","en":"Tuen Mun Station","dir":"O"}],"K54":[{"seq":1,"code":"K54-U010","tc":"和田邨","en":"Wo Tin Estate","dir":"O"},{"seq":2,"code":"K54-U020","tc":"菁田邨","en":"Ching Tin Estate","dir":"O"},{"seq":3,"code":"K54-U030","tc":"紫田村","en":"Tsz Tin Tsuen","dir":"O"},{"seq":4,"code":"K54-U040","tc":"欣田邨","en":"Yan Tin Estate","dir":"O"},{"seq":5,"code":"K54-U050","tc":"港鐵兆康站 (北) (輕鐵兆康站)","en":"MTR Siu Hong Station (North) (LR Siu Hong Stop)","dir":"O"},{"seq":6,"code":"K54-U060","tc":"紅橋","en":"Hung Kiu","dir":"O"},{"seq":7,"code":"K54-U070","tc":"屯門市中心","en":"Tuen Mun Town Centre","dir":"O"},{"seq":8,"code":"K54-D010","tc":"屯門市廣場","en":"Tuen Mun Town Plaza","dir":"O"},{"seq":9,"code":"K54-D020","tc":"新墟街市","en":"San Hui Market","dir":"O"},{"seq":10,"code":"K54-D030","tc":"港鐵兆康站 (北) (輕鐵兆康站)","en":"MTR Siu Hong Station (North) (LR Siu Hong Stop)","dir":"O"},{"seq":11,"code":"K54-D040","tc":"兆康苑","en":"Siu Hong Court","dir":"O"},{"seq":12,"code":"K54-D050","tc":"欣寶路公共運輸交匯處","en":"Yan Po Road Public Transport Interchange","dir":"O"},{"seq":13,"code":"K54-D060","tc":"菁田邨","en":"Ching Tin Estate","dir":"O"},{"seq":14,"code":"K54-D070","tc":"和田邨","en":"Wo Tin Estate","dir":"O"}],"K54A":[{"seq":1,"code":"K54A-U010","tc":"和田邨","en":"Wo Tin Estate","dir":"O"},{"seq":2,"code":"K54A-U020","tc":"菁田邨","en":"Ching Tin Estate","dir":"O"},{"seq":3,"code":"K54A-U030","tc":"紫田村","en":"Tsz Tin Tsuen","dir":"O"},{"seq":4,"code":"K54A-U040","tc":"欣田邨","en":"Yan Tin Estate","dir":"O"},{"seq":5,"code":"K54A-U050","tc":"港鐵兆康站 (北) (輕鐵兆康站)","en":"MTR Siu Hong Station (North) (LR Siu Hong Stop)","dir":"O"},{"seq":1,"code":"K54A-D010","tc":"港鐵兆康站 (北) (輕鐵兆康站)","en":"MTR Siu Hong Station (North) (LR Siu Hong Stop)","dir":"I"},{"seq":2,"code":"K54A-D020","tc":"兆康苑","en":"Siu Hong Court","dir":"I"},{"seq":3,"code":"K54A-D030","tc":"欣寶路公共運輸交匯處","en":"Yan Po Road Public Transport Interchange","dir":"I"},{"seq":4,"code":"K54A-D040","tc":"菁田邨","en":"Ching Tin Estate","dir":"I"},{"seq":5,"code":"K54A-D050","tc":"和田邨","en":"Wo Tin Estate","dir":"I"}],"K58":[{"seq":1,"code":"K58-U010","tc":"富泰","en":"Fu Tai","dir":"O"},{"seq":2,"code":"K58-U020","tc":"聚康山莊","en":"Beneville","dir":"O"},{"seq":3,"code":"K58-U023","tc":"嶺南大學","en":"Lingnan University","dir":"O"},{"seq":4,"code":"K58-U026","tc":"彩暉花園","en":"Brilliant Garden","dir":"O"},{"seq":5,"code":"K58-U030","tc":"港鐵兆康站 (南) (輕鐵兆康站)","en":"MTR Siu Hong Station (South) (LR Siu Hong Stop)","dir":"O"},{"seq":6,"code":"K58-U040","tc":"兆康苑","en":"Siu Hong Court","dir":"O"},{"seq":7,"code":"K58-U050","tc":"輕鐵麒麟站","en":"LR Kei Lun Stop","dir":"O"},{"seq":8,"code":"K58-U060","tc":"屯門醫院","en":"Tuen Mun Hospital","dir":"O"},{"seq":9,"code":"K58-U070","tc":"青松觀","en":"Tsing Chung Koon","dir":"O"},{"seq":10,"code":"K58-U080","tc":"保良局莊啟程第二小學","en":"PLK Vicwood K.T. Chong No.2 Primary School","dir":"O"},{"seq":11,"code":"K58-U090","tc":"何壽基小學","en":"Ho Sau Kei Primary School","dir":"O"},{"seq":12,"code":"K58-U100","tc":"良景邨","en":"Leung King Estate","dir":"O"},{"seq":13,"code":"K58-U110","tc":"輕鐵新圍站","en":"LR San Wai Stop","dir":"O"},{"seq":14,"code":"K58-U120","tc":"輕鐵石排站","en":"LR Shek Pai Stop","dir":"O"},{"seq":15,"code":"K58-U130","tc":"輕鐵鳴琴站","en":"LR Ming Kum Stop","dir":"O"},{"seq":16,"code":"K58-U140","tc":"輕鐵建安站","en":"LR Kin On Stop","dir":"O"},{"seq":17,"code":"K58-U150","tc":"港鐵屯門站","en":"MTR Tuen Mun Station","dir":"O"},{"seq":18,"code":"K58-U160","tc":"屯門市中心","en":"Tuen Mun Town Centre","dir":"O"},{"seq":19,"code":"K58-U170","tc":"屯門官立中學","en":"Tuen Mun Government Secondary School","dir":"O"},{"seq":20,"code":"K58-U180","tc":"恒順園","en":"Handsome Court","dir":"O"},{"seq":21,"code":"K58-U190","tc":"恒豐園","en":"Harvest Garden","dir":"O"},{"seq":22,"code":"K58-U200","tc":"三聖邨","en":"Sam Shing Estate","dir":"O"},{"seq":23,"code":"K58-U215","tc":"青山灣","en":"Castle Peak Beach","dir":"O"},{"seq":24,"code":"K58-U220","tc":"海景花園","en":"Seaview Garden","dir":"O"},{"seq":25,"code":"K58-U230","tc":"咖啡灣","en":"Cafeteria Beach","dir":"O"},{"seq":26,"code":"K58-U240","tc":"黃金泳灘","en":"Golden Beach","dir":"O"},{"seq":27,"code":"K58-U250","tc":"香港黃金海岸","en":"Hong Kong Gold Coast","dir":"O"},{"seq":28,"code":"K58-U260","tc":"愛琴海岸","en":"Aegean Coast","dir":"O"},{"seq":29,"code":"K58-U270","tc":"掃管笏變電站","en":"So Kwun Wat Sub-station","dir":"O"},{"seq":30,"code":"K58-U280","tc":"掃管笏村","en":"So Kwun Wat Tsuen","dir":"O"},{"seq":31,"code":"K58-U290","tc":"掃管笏 (鄭任安夫人千禧小學)","en":"So Kwun Wat (Mrs. Cheng Yam On Millennium School)","dir":"O"},{"seq":32,"code":"K58-U300","tc":"掃管笏路","en":"So Kwun Wat Road","dir":"O"},{"seq":33,"code":"K58-U310","tc":"管翠路8號","en":"8 Kwun Chui Road","dir":"O"},{"seq":34,"code":"K58-U320","tc":"管翠路","en":"Kwun Chui Road","dir":"O"},{"seq":1,"code":"K58-D001","tc":"掃管笏村","en":"So Kwun Wat Tsuen","dir":"I"},{"seq":2,"code":"K58-D002","tc":"掃管笏  (鄭任安夫人千禧小學)","en":"So Kwun Wat (Mrs. Cheng Yam On Millennium School)","dir":"I"},{"seq":3,"code":"K58-D003","tc":"掃管笏路","en":"So Kwun Wat Road","dir":"I"},{"seq":4,"code":"K58-D004","tc":"管翠路8號","en":"8 Kwun Chui Road","dir":"I"},{"seq":5,"code":"K58-D005","tc":"管翠路","en":"Kwun Chui Road","dir":"I"},{"seq":6,"code":"K58-D006","tc":"愛琴海岸","en":"Aegean Coast","dir":"I"},{"seq":7,"code":"K58-D007","tc":"香港黃金海岸","en":"Hong Kong Gold Coast","dir":"I"},{"seq":8,"code":"K58-D008","tc":"黃金泳灘","en":"Golden Beach","dir":"I"},{"seq":9,"code":"K58-D009","tc":"咖啡灣","en":"Cafeteria Beach","dir":"I"},{"seq":10,"code":"K58-D011","tc":"碧翠花園","en":"Bayview Terrace","dir":"I"},{"seq":11,"code":"K58-D012","tc":"青山灣碼頭","en":"Castle Peak Bay Pier","dir":"I"},{"seq":12,"code":"K58-D020","tc":"三聖邨","en":"Sam Shing Estate","dir":"I"},{"seq":13,"code":"K58-D030","tc":"胡陳金枝中學","en":"Mrs Aw Boon Haw Secondary School","dir":"I"},{"seq":14,"code":"K58-D040","tc":"青善遊樂場","en":"Tsing Sin Playground","dir":"I"},{"seq":15,"code":"K58-D050","tc":"置樂花園","en":"Chi Lok Fa Yuen","dir":"I"},{"seq":16,"code":"K58-D060","tc":"屯門官立中學","en":"Tuen Mun Government Secondary School","dir":"I"},{"seq":17,"code":"K58-D070","tc":"輕鐵市中心站","en":"LR Town Centre Stop","dir":"I"},{"seq":18,"code":"K58-D080","tc":"輕鐵屯門站 (港鐵屯門站)","en":"LR Tuen Mun Stop (MTR Tuen Mun Station)","dir":"I"},{"seq":19,"code":"K58-D090","tc":"輕鐵建安站","en":"LR Kin On Stop","dir":"I"},{"seq":20,"code":"K58-D100","tc":"輕鐵鳴琴站","en":"LR Ming Kum Stop","dir":"I"},{"seq":21,"code":"K58-D110","tc":"輕鐵石排站","en":"LR Shek Pai Stop","dir":"I"},{"seq":22,"code":"K58-D120","tc":"輕鐵新圍站","en":"LR San Wai Stop","dir":"I"},{"seq":23,"code":"K58-D130","tc":"輕鐵田景站","en":"LR Tin King Stop","dir":"I"},{"seq":24,"code":"K58-D140","tc":"青田遊樂場","en":"Tsing Tin Playground","dir":"I"},{"seq":25,"code":"K58-D150","tc":"建生邨樂生樓","en":"\"Lok Sang House","dir":"I"},{"seq":26,"code":"K58-D160","tc":"建生邨泰生樓","en":"\"Tai Sang House","dir":"I"},{"seq":27,"code":"K58-D170","tc":"輕鐵麒麟站","en":"LR Kei Lun Stop","dir":"I"},{"seq":28,"code":"K58-D180","tc":"欣田邨","en":"Yan Tin Estate","dir":"I"},{"seq":29,"code":"K58-D190","tc":"港鐵兆康站 (南) (輕鐵兆康站)","en":"MTR Siu Hong Station (South) (LR Siu Hong Stop)","dir":"I"},{"seq":30,"code":"K58-D193","tc":"彩暉花園","en":"Brilliant Garden","dir":"I"},{"seq":31,"code":"K58-D196","tc":"嶺南大學","en":"Lingnan University","dir":"I"},{"seq":32,"code":"K58-D200","tc":"倚嶺南庭","en":"South Hillcrest","dir":"I"},{"seq":33,"code":"K58-D210","tc":"富泰","en":"Fu Tai","dir":"I"}],"K65":[{"seq":1,"code":"K65-U010","tc":"元朗站 (輕鐵元朗站) (港鐵元朗站)","en":"Yuen Long Station (LR Yuen Long Stop) (MTR Yuen Long Station)","dir":"O"},{"seq":2,"code":"K65-U020","tc":"又新街","en":"Yau San Street","dir":"O"},{"seq":3,"code":"K65-U030","tc":"大棠路","en":"Tai Tong Road","dir":"O"},{"seq":4,"code":"K65-U040","tc":"康樂路","en":"Hong Lok Road","dir":"O"},{"seq":5,"code":"K65-U050","tc":"元朗警署","en":"Yuen Long Police Station","dir":"O"},{"seq":6,"code":"K65-U060","tc":"輕鐵水邊圍站","en":"LR Shui Pin Wai Stop","dir":"O"},{"seq":7,"code":"K65-U070","tc":"元朗公園","en":"Yuen Long Park","dir":"O"},{"seq":8,"code":"K65-U080","tc":"朗邊","en":"Long Bin","dir":"O"},{"seq":9,"code":"K65-U090","tc":"屏山屏興里","en":"\"Ping Hing Lane","dir":"O"},{"seq":10,"code":"K65-U100","tc":"坑尾村","en":"Hang Mei Tsuen","dir":"O"},{"seq":11,"code":"K65-U110","tc":"輕鐵坑尾村站","en":"LR Hang Mei Tsuen Stop","dir":"O"},{"seq":12,"code":"K65-U120","tc":"天盛苑 (港鐵天水圍站)","en":"Tin Shing Court (MTR Tin Shui Wai Station)","dir":"O"},{"seq":13,"code":"K65-U130","tc":"石埗路","en":"Shek Po Road","dir":"O"},{"seq":14,"code":"K65-U140","tc":"沙洲里村","en":"Sha Chau Lei Tsuen","dir":"O"},{"seq":15,"code":"K65-U150","tc":"廈村","en":"Ha Tsuen","dir":"O"},{"seq":16,"code":"K65-U160","tc":"錫降圍","en":"Shek Kong Wai","dir":"O"},{"seq":17,"code":"K65-U170","tc":"羅屋村","en":"Lo Uk Tsuen","dir":"O"},{"seq":18,"code":"K65-U180","tc":"東頭村 (南)","en":"Tung Tau Tsuen (South)","dir":"O"},{"seq":19,"code":"K65-U190","tc":"東頭村 (北)","en":"Tung Tau Tsuen (North)","dir":"O"},{"seq":20,"code":"K65-U200","tc":"鳳降村","en":"Fung Kong Tsuen","dir":"O"},{"seq":21,"code":"K65-U210","tc":"沙江圍","en":"Sha Kong Wai","dir":"O"},{"seq":22,"code":"K65-U220","tc":"新慶村","en":"San Hing Tsuen","dir":"O"},{"seq":23,"code":"K65-U230","tc":"流浮山","en":"Lau Fau Shan","dir":"O"},{"seq":1,"code":"K65-D010","tc":"流浮山","en":"Lau Fau Shan","dir":"I"},{"seq":2,"code":"K65-D020","tc":"新慶村","en":"San Hing Tsuen","dir":"I"},{"seq":3,"code":"K65-D030","tc":"沙江圍","en":"Sha Kong Wai","dir":"I"},{"seq":4,"code":"K65-D040","tc":"鳳降村","en":"Fung Kong Tsuen","dir":"I"},{"seq":5,"code":"K65-D050","tc":"東頭村","en":"Tung Tau Tsuen","dir":"I"},{"seq":6,"code":"K65-D060","tc":"羅屋村","en":"Lo Uk Tsuen","dir":"I"},{"seq":7,"code":"K65-D070","tc":"錫降圍","en":"Shek Kong Wai","dir":"I"},{"seq":8,"code":"K65-D080","tc":"廈村","en":"Ha Tsuen","dir":"I"},{"seq":9,"code":"K65-D090","tc":"沙洲里村","en":"Sha Chau Lei Tsuen","dir":"I"},{"seq":10,"code":"K65-D100","tc":"天盛苑 (港鐵天水圍站)","en":"Tin Shing Court (MTR Tin Shui Wai Station)","dir":"I"},{"seq":11,"code":"K65-D110","tc":"輕鐵坑尾村站","en":"LR Hang Mei Tsuen Stop","dir":"I"},{"seq":12,"code":"K65-D120","tc":"坑尾村","en":"Hang Mei Tsuen","dir":"I"},{"seq":13,"code":"K65-D130","tc":"屏山屏興里","en":"\"Ping Hing Lane","dir":"I"},{"seq":14,"code":"K65-D140","tc":"輕鐵屏山站","en":"LR Ping Shan Stop","dir":"I"},{"seq":15,"code":"K65-D150","tc":"輕鐵水邊圍站","en":"LR Shui Pin Wai Stop","dir":"I"},{"seq":16,"code":"K65-D160","tc":"元朗廣場","en":"Yuen Long Plaza","dir":"I"},{"seq":17,"code":"K65-D170","tc":"開心廣場","en":"Yuen Long Landmark","dir":"I"},{"seq":18,"code":"K65-D180","tc":"谷亭街","en":"Kuk Ting Street","dir":"I"},{"seq":19,"code":"K65-D190","tc":"\"元朗站 (輕鐵元朗站","en":"港鐵元朗站)\"","dir":"I"}],"K65A":[{"seq":1,"code":"K65A-U010","tc":"天水圍站 (輕鐵天水圍站)","en":"Tin Shui Wai Station (LR Tin Shui Wai Stop)","dir":"O"},{"seq":2,"code":"K65A-U020","tc":"天盛苑 (港鐵天水圍站)","en":"Tin Shing Court (MTR Tin Shui Wai Station)","dir":"O"},{"seq":3,"code":"K65A-U030","tc":"石埗路","en":"Shek Po Road","dir":"O"},{"seq":4,"code":"K65A-U040","tc":"沙洲里村","en":"Sha Chau Lei Tsuen","dir":"O"},{"seq":5,"code":"K65A-U050","tc":"廈村","en":"Ha Tsuen","dir":"O"},{"seq":6,"code":"K65A-U060","tc":"錫降圍","en":"Shek Kong Wai","dir":"O"},{"seq":7,"code":"K65A-U070","tc":"羅屋村","en":"Lo Uk Tsuen","dir":"O"},{"seq":8,"code":"K65A-U080","tc":"東頭村 (南)","en":"Tung Tau Tsuen (South)","dir":"O"},{"seq":9,"code":"K65A-U090","tc":"東頭村 (北)","en":"Tung Tau Tsuen (North)","dir":"O"},{"seq":10,"code":"K65A-U100","tc":"鳳降村","en":"Fung Kong Tsuen","dir":"O"},{"seq":11,"code":"K65A-U110","tc":"沙江圍","en":"Sha Kong Wai","dir":"O"},{"seq":12,"code":"K65A-U120","tc":"新慶村","en":"San Hing Tsuen","dir":"O"},{"seq":13,"code":"K65A-U130","tc":"流浮山","en":"Lau Fau Shan","dir":"O"},{"seq":1,"code":"K65A-D010","tc":"流浮山","en":"Lau Fau Shan","dir":"I"},{"seq":2,"code":"K65A-D020","tc":"新慶村","en":"San Hing Tsuen","dir":"I"},{"seq":3,"code":"K65A-D030","tc":"沙江圍","en":"Sha Kong Wai","dir":"I"},{"seq":4,"code":"K65A-D040","tc":"鳳降村","en":"Fung Kong Tsuen","dir":"I"},{"seq":5,"code":"K65A-D050","tc":"東頭村","en":"Tung Tau Tsuen","dir":"I"},{"seq":6,"code":"K65A-D060","tc":"羅屋村","en":"Lo Uk Tsuen","dir":"I"},{"seq":7,"code":"K65A-D070","tc":"錫降圍","en":"Shek Kong Wai","dir":"I"},{"seq":8,"code":"K65A-D080","tc":"廈村","en":"Ha Tsuen","dir":"I"},{"seq":9,"code":"K65A-D090","tc":"沙洲里村","en":"Sha Chau Lei Tsuen","dir":"I"},{"seq":10,"code":"K65A-D100","tc":"天盛苑 (港鐵天水圍站)","en":"Tin Shing Court (MTR Tin Shui Wai Station)","dir":"I"},{"seq":11,"code":"K65A-D110","tc":"天水圍站 (輕鐵天水圍站)","en":"Tin Shui Wai Station (LR Tin Shui Wai Stop)","dir":"I"}],"K66":[{"seq":1,"code":"K66-U010","tc":"朗屏","en":"Long Ping","dir":"O"},{"seq":2,"code":"K66-U020","tc":"楊屋村","en":"Yeung Uk Tsuen","dir":"O"},{"seq":3,"code":"K66-U030","tc":"屏昌徑 (港鐵朗屏站)","en":"Ping Cheong Path (MTR Long Ping Station)","dir":"O"},{"seq":4,"code":"K66-U040","tc":"元朗盲人安老院","en":"Yuen Long Home for the Aged Blind","dir":"O"},{"seq":5,"code":"K66-U050","tc":"元朗大會堂 (輕鐵豐年路站)","en":"Yuen Long Town Hall (LR Fung Nin Road Stop)","dir":"O"},{"seq":6,"code":"K66-U060","tc":"安康路","en":"On Hong Road","dir":"O"},{"seq":7,"code":"K66-U070","tc":"元朗商業中心","en":"Yuen Long Commercial Centre","dir":"O"},{"seq":8,"code":"K66-U080","tc":"富達廣場","en":"Manhattan Plaza","dir":"O"},{"seq":9,"code":"K66-U090","tc":"蝶翠峰","en":"Sereno Verde","dir":"O"},{"seq":10,"code":"K66-U100","tc":"禮修村","en":"Fraser Village","dir":"O"},{"seq":11,"code":"K66-U110","tc":"深涌村","en":"Sham Chung Tsuen","dir":"O"},{"seq":12,"code":"K66-U120","tc":"羅家園","en":"Law Ka Yuen","dir":"O"},{"seq":13,"code":"K66-U130","tc":"崇正公立學校","en":"Shung Ching School","dir":"O"},{"seq":14,"code":"K66-U140","tc":"崇正菜站","en":"Shung Ching Vegetable Market","dir":"O"},{"seq":15,"code":"K66-U150","tc":"老圍","en":"Lo Wai","dir":"O"},{"seq":16,"code":"K66-U160","tc":"振華花園","en":"Chun Wah Villas","dir":"O"},{"seq":17,"code":"K66-U170","tc":"南坑排","en":"Nam Hang Pai","dir":"O"},{"seq":18,"code":"K66-U180","tc":"水蕉新村","en":"Shui Chiu San Tsuen","dir":"O"},{"seq":19,"code":"K66-U190","tc":"華苑","en":"Wah Yuen","dir":"O"},{"seq":20,"code":"K66-U200","tc":"大棠迴旋處","en":"Tai Tong Roundabout","dir":"O"},{"seq":21,"code":"K66-U210","tc":"大棠山路","en":"Tai Tong Shan Road","dir":"O"},{"seq":22,"code":"K66-U220","tc":"大棠黃泥墩村","en":"Tai Tong Wong Nai Tun Tsuen","dir":"O"},{"seq":1,"code":"K66-D010","tc":"大棠黃泥墩村","en":"Tai Tong Wong Nai Tun Tsuen","dir":"I"},{"seq":2,"code":"K66-D020","tc":"大棠山路","en":"Tai Tong Shan Road","dir":"I"},{"seq":3,"code":"K66-D030","tc":"大棠迴旋處","en":"Tai Tong Roundabout","dir":"I"},{"seq":4,"code":"K66-D040","tc":"華苑","en":"Wah Yuen","dir":"I"},{"seq":5,"code":"K66-D050","tc":"水蕉新村","en":"Shui Chiu San Tsuen","dir":"I"},{"seq":6,"code":"K66-D060","tc":"南坑排","en":"Nam Hang Pai","dir":"I"},{"seq":7,"code":"K66-D070","tc":"南坑村","en":"Nam Hang Tsuen","dir":"I"},{"seq":8,"code":"K66-D080","tc":"紅棗田村","en":"Hung Tso Tin Tsuen","dir":"I"},{"seq":9,"code":"K66-D090","tc":"普盛圍","en":"Po Shing Wai","dir":"I"},{"seq":10,"code":"K66-D100","tc":"崇正公立學校","en":"Shung Ching School","dir":"I"},{"seq":11,"code":"K66-D110","tc":"羅家園","en":"Law Ka Yuen","dir":"I"},{"seq":12,"code":"K66-D120","tc":"深涌村","en":"Sham Chung Tsuen","dir":"I"},{"seq":13,"code":"K66-D130","tc":"禮修村","en":"Fraser Village","dir":"I"},{"seq":14,"code":"K66-D140","tc":"蝶翠峰","en":"Sereno Verde","dir":"I"},{"seq":15,"code":"K66-D150","tc":"恆香製餅廠","en":"Hang Heung Cake Shop","dir":"I"},{"seq":16,"code":"K66-D160","tc":"富達廣場","en":"Manhattan Plaza","dir":"I"},{"seq":17,"code":"K66-D170","tc":"千色廣場","en":"Citi Mall","dir":"I"},{"seq":18,"code":"K66-D180","tc":"安康路","en":"On Hong Road","dir":"I"},{"seq":19,"code":"K66-D190","tc":"元朗大會堂 (輕鐵豐年路站)","en":"Yuen Long Town Hall (LR Fung Nin Road Stop)","dir":"I"},{"seq":20,"code":"K66-D200","tc":"水邊圍邨康水樓","en":"\"Hong Shui House","dir":"I"},{"seq":21,"code":"K66-D210","tc":"朗屏邨悅屏樓 (港鐵朗屏站)","en":"\"Yuet Ping House","dir":"I"},{"seq":22,"code":"K66-D220","tc":"惠州學校","en":"Wai Chow School","dir":"I"},{"seq":23,"code":"K66-D230","tc":"朗屏邨珠屏樓","en":"\"Chu Ping House","dir":"I"},{"seq":24,"code":"K66-D240","tc":"朗屏","en":"Long Ping","dir":"I"},{"seq":1,"code":"K66-D010","tc":"大棠黃泥墩村","en":"Tai Tong Wong Nai Tun Tsuen","dir":"O"},{"seq":2,"code":"K66-D020","tc":"大棠山路","en":"Tai Tong Shan Road","dir":"O"},{"seq":3,"code":"K66-D030","tc":"大棠迴旋處","en":"Tai Tong Roundabout","dir":"O"},{"seq":4,"code":"K66-D040","tc":"華苑","en":"Wah Yuen","dir":"O"},{"seq":5,"code":"K66-D050","tc":"水蕉新村","en":"Shui Chiu San Tsuen","dir":"O"},{"seq":6,"code":"K66-D060","tc":"南坑排","en":"Nam Hang Pai","dir":"O"},{"seq":7,"code":"K66-D070","tc":"南坑村","en":"Nam Hang Tsuen","dir":"O"},{"seq":8,"code":"K66-D080","tc":"紅棗田村","en":"Hung Tso Tin Tsuen","dir":"O"},{"seq":9,"code":"K66-D090","tc":"普盛圍","en":"Po Shing Wai","dir":"O"},{"seq":10,"code":"K66-D100","tc":"崇正公立學校","en":"Shung Ching School","dir":"O"},{"seq":11,"code":"K66-D110","tc":"羅家園","en":"Law Ka Yuen","dir":"O"},{"seq":12,"code":"K66-D120","tc":"深涌村","en":"Sham Chung Tsuen","dir":"O"},{"seq":13,"code":"K66-D130","tc":"禮修村","en":"Fraser Village","dir":"O"},{"seq":14,"code":"K66-D140","tc":"蝶翠峰","en":"Sereno Verde","dir":"O"},{"seq":15,"code":"K66-D150","tc":"恆香製餅廠","en":"Hang Heung Cake Shop","dir":"O"},{"seq":16,"code":"K66-D160","tc":"富達廣場","en":"Manhattan Plaza","dir":"O"},{"seq":17,"code":"K66-D170","tc":"千色廣場","en":"Citi Mall","dir":"O"},{"seq":18,"code":"K66-D180","tc":"安康路","en":"On Hong Road","dir":"O"},{"seq":19,"code":"K66-D190","tc":"元朗大會堂","en":"Yuen Long Town Hall","dir":"O"},{"seq":20,"code":"K66-D200","tc":"水邊圍邨康水樓","en":"\"Hong Shui House","dir":"O"},{"seq":21,"code":"K66-D210","tc":"朗屏邨悅屏樓","en":"\"Yuet Ping House","dir":"O"},{"seq":1,"code":"K66-D010","tc":"大棠黃泥墩村","en":"Tai Tong Wong Nai Tun Tsuen","dir":"O"},{"seq":2,"code":"K66-D020","tc":"大棠山路","en":"Tai Tong Shan Road","dir":"O"},{"seq":3,"code":"K66-D030","tc":"大棠迴旋處","en":"Tai Tong Roundabout","dir":"O"},{"seq":4,"code":"K66-D040","tc":"華苑","en":"Wah Yuen","dir":"O"},{"seq":5,"code":"K66-D050","tc":"水蕉新村","en":"Shui Chiu San Tsuen","dir":"O"},{"seq":6,"code":"K66-D060","tc":"南坑排","en":"Nam Hang Pai","dir":"O"},{"seq":7,"code":"K66-D070","tc":"南坑村","en":"Nam Hang Tsuen","dir":"O"},{"seq":8,"code":"K66-D080","tc":"紅棗田村","en":"Hung Tso Tin Tsuen","dir":"O"},{"seq":9,"code":"K66-D090","tc":"普盛圍","en":"Po Shing Wai","dir":"O"},{"seq":10,"code":"K66-D100","tc":"崇正公立學校","en":"Shung Ching School","dir":"O"},{"seq":11,"code":"K66-D110","tc":"羅家園","en":"Law Ka Yuen","dir":"O"},{"seq":12,"code":"K66-D120","tc":"深涌村","en":"Sham Chung Tsuen","dir":"O"},{"seq":13,"code":"K66-D130","tc":"禮修村","en":"Fraser Village","dir":"O"},{"seq":14,"code":"K66-D140","tc":"蝶翠峰","en":"Sereno Verde","dir":"O"},{"seq":15,"code":"K66-D150","tc":"恆香製餅廠","en":"Hang Heung Cake Shop","dir":"O"},{"seq":16,"code":"K66-D160","tc":"富達廣場","en":"Manhattan Plaza","dir":"O"},{"seq":17,"code":"K66-D170","tc":"千色廣場","en":"Citi Mall","dir":"O"},{"seq":18,"code":"K66-D180","tc":"安康路","en":"On Hong Road","dir":"O"},{"seq":1,"code":"K66-D060","tc":"南坑排","en":"Nam Hang Pai","dir":"O"},{"seq":2,"code":"K66-D070","tc":"南坑村","en":"Nam Hang Tsuen","dir":"O"},{"seq":3,"code":"K66-D080","tc":"紅棗田村","en":"Hung Tso Tin Tsuen","dir":"O"},{"seq":4,"code":"K66-D090","tc":"普盛圍","en":"Po Shing Wai","dir":"O"},{"seq":5,"code":"K66-D100","tc":"崇正公立學校","en":"Shung Ching School","dir":"O"},{"seq":6,"code":"K66-D110","tc":"羅家園","en":"Law Ka Yuen","dir":"O"},{"seq":7,"code":"K66-D120","tc":"深涌村","en":"Sham Chung Tsuen","dir":"O"},{"seq":8,"code":"K66-D130","tc":"禮修村","en":"Fraser Village","dir":"O"},{"seq":9,"code":"K66-D140","tc":"蝶翠峰","en":"Sereno Verde","dir":"O"},{"seq":10,"code":"K66-D150","tc":"恆香製餅廠","en":"Hang Heung Cake Shop","dir":"O"},{"seq":11,"code":"K66-D160","tc":"富達廣場","en":"Manhattan Plaza","dir":"O"},{"seq":12,"code":"K66-D170","tc":"千色廣場","en":"Citi Mall","dir":"O"},{"seq":13,"code":"K66-D180","tc":"安康路","en":"On Hong Road","dir":"O"},{"seq":14,"code":"K66-D190","tc":"元朗大會堂","en":"Yuen Long Town Hall","dir":"O"},{"seq":15,"code":"K66-D200","tc":"水邊圍邨康水樓","en":"\"Hong Shui House","dir":"O"},{"seq":16,"code":"K66-D210","tc":"朗屏邨悅屏樓","en":"\"Yuet Ping House","dir":"O"},{"seq":17,"code":"K66-D220","tc":"惠州學校","en":"Wai Chow School","dir":"O"},{"seq":18,"code":"K66-D230","tc":"朗屏邨珠屏樓","en":"\"Chu Ping House","dir":"O"},{"seq":19,"code":"K66-D240","tc":"朗屏","en":"Long Ping","dir":"O"}],"K68":[{"seq":1,"code":"K68-U010","tc":"元朗工業邨","en":"Yuen Long Industrial Estate","dir":"O"},{"seq":2,"code":"K68-U020","tc":"凸版資訊卡","en":"Toppan Forms Card Tech Ltd","dir":"O"},{"seq":3,"code":"K68-U030","tc":"雀巢","en":"Nestle (HK) Ltd","dir":"O"},{"seq":4,"code":"K68-U040","tc":"元朗污水處理廠","en":"Yuen Long Sewage Treatment Works","dir":"O"},{"seq":5,"code":"K68-U050","tc":"位元堂藥業大廈","en":"Wai Yuen Tong Medicine Building","dir":"O"},{"seq":6,"code":"K68-U060","tc":"東電化電子零件","en":"TDK Manufacturing (HK) Co Ltd","dir":"O"},{"seq":7,"code":"K68-U070","tc":"凸版印刷","en":"Toppan Printing Co (HK) Ltd","dir":"O"},{"seq":8,"code":"K68-U080","tc":"匯泉國際實業","en":"Telford International Industries Ltd","dir":"O"},{"seq":9,"code":"K68-U090","tc":"橫洲福慶村","en":"Wang Chau Fuk Hing Tsuen","dir":"O"},{"seq":10,"code":"K68-U100","tc":"朗屏 (巴士總站)","en":"Long Ping (Bus Terminus)","dir":"O"},{"seq":11,"code":"K68-U110","tc":"楊屋村","en":"Yeung Uk Tsuen","dir":"O"},{"seq":12,"code":"K68-U120","tc":"屏昌徑 (港鐵朗屏站)","en":"Ping Cheong Path (MTR Long Ping Station)","dir":"O"},{"seq":13,"code":"K68-U130","tc":"元朗盲人安老院","en":"Yuen Long Home for the Aged Blind","dir":"O"},{"seq":14,"code":"K68-U140","tc":"聿修堂 (輕鐵豐年路站)","en":"Lut Sau Hall (LR Fung Nin Road Stop)","dir":"O"},{"seq":15,"code":"K68-U150","tc":"元朗劇院","en":"Yuen Long Theatre","dir":"O"},{"seq":16,"code":"K68-U160","tc":"銀田花園","en":"Silver Field Garden","dir":"O"},{"seq":17,"code":"K68-U170","tc":"南元朗官立小學","en":"South Yuen Long Government Primary School","dir":"O"},{"seq":18,"code":"K68-D010","tc":"元朗公園","en":"Yuen Long Park","dir":"O"},{"seq":19,"code":"K68-D020","tc":"御豪山莊","en":"Park Royale","dir":"O"},{"seq":20,"code":"K68-D030","tc":"藝典居","en":"Villa Art Deco","dir":"O"},{"seq":21,"code":"K68-D040","tc":"御庭居","en":"Springdale Villas","dir":"O"},{"seq":22,"code":"K68-D050","tc":"元朗游泳池","en":"Yuen Long Swimming Pool","dir":"O"},{"seq":23,"code":"K68-D060","tc":"元朗大會堂","en":"Yuen Long Town Hall","dir":"O"},{"seq":24,"code":"K68-D070","tc":"元朗廣場 (輕鐵豐年路站)","en":"Yuen Long Plaza (LR Fung Nin Road Stop)","dir":"O"},{"seq":25,"code":"K68-D080","tc":"元朗安寧路","en":"Yuen Long On Ning Road","dir":"O"},{"seq":26,"code":"K68-D090","tc":"大橋村 (港鐵朗屏站)","en":"Tai Kiu Tsuen (MTR Long Ping Station)","dir":"O"},{"seq":27,"code":"K68-D100","tc":"惠州學校","en":"Wai Chow School","dir":"O"},{"seq":28,"code":"K68-D110","tc":"朗屏邨珠屏樓","en":"\"Chu Ping House","dir":"O"},{"seq":29,"code":"K68-D120","tc":"朗屏 (巴士總站)","en":"Long Ping (Bus Terminus)","dir":"O"},{"seq":30,"code":"K68-D130","tc":"橫洲福慶村","en":"Wang Chau Fuk Hing Tsuen","dir":"O"},{"seq":31,"code":"K68-D140","tc":"元朗紡織品","en":"Yuen Long Textile Co Ltd","dir":"O"},{"seq":32,"code":"K68-D150","tc":"大昌行食品加工及物流中心","en":"DCH Food Processing & Logistics Centre","dir":"O"},{"seq":33,"code":"K68-D160","tc":"有生鉛水(熱浸鋅)","en":"Yau Sang Galvanizers (Hot-Dip) Co Ltd","dir":"O"},{"seq":34,"code":"K68-D170","tc":"余仁生中心","en":"Eu Yan Sang Centre","dir":"O"},{"seq":35,"code":"K68-D180","tc":"元朗污水處理廠","en":"Yuen Long Sewage Treatment Works","dir":"O"},{"seq":36,"code":"K68-D190","tc":"雀巢","en":"Nestle (HK) Ltd","dir":"O"},{"seq":37,"code":"K68-D200","tc":"牛尾香港","en":"Ushio HK Ltd","dir":"O"},{"seq":38,"code":"K68-U011","tc":"元朗工業邨","en":"Yuen Long Industrial Estate","dir":"O"},{"seq":1,"code":"K68-U160","tc":"銀田花園","en":"Silver Field Garden","dir":"O"},{"seq":2,"code":"K68-U170","tc":"南元朗官立小學","en":"South Yuen Long Government Primary School","dir":"O"},{"seq":3,"code":"K68-D010","tc":"元朗公園","en":"Yuen Long Park","dir":"O"},{"seq":4,"code":"K68-D020","tc":"御豪山莊","en":"Park Royale","dir":"O"},{"seq":5,"code":"K68-D030","tc":"藝典居","en":"Villa Art Deco","dir":"O"},{"seq":6,"code":"K68-D040","tc":"御庭居","en":"Springdale Villas","dir":"O"},{"seq":7,"code":"K68-D050","tc":"元朗游泳池","en":"Yuen Long Swimming Pool","dir":"O"},{"seq":8,"code":"K68-D060","tc":"元朗大會堂","en":"Yuen Long Town Hall","dir":"O"},{"seq":9,"code":"K68-D070","tc":"元朗廣場","en":"Yuen Long Plaza","dir":"O"},{"seq":10,"code":"K68-D080","tc":"元朗安寧路","en":"Yuen Long On Ning Road","dir":"O"},{"seq":11,"code":"K68-D090","tc":"大橋村","en":"Tai Kiu Tsuen","dir":"O"},{"seq":12,"code":"K68-D100","tc":"惠州學校","en":"Wai Chow School","dir":"O"},{"seq":13,"code":"K68-D110","tc":"朗屏邨珠屏樓","en":"\"Chu Ping House","dir":"O"},{"seq":14,"code":"K68-D120","tc":"朗屏","en":"Long Ping","dir":"O"},{"seq":15,"code":"K68-D130","tc":"橫洲福慶村","en":"Wang Chau Fuk Hing Tsuen","dir":"O"},{"seq":16,"code":"K68-D140","tc":"元朗紡織品","en":"Yuen Long Textile Co Ltd","dir":"O"},{"seq":17,"code":"K68-D150","tc":"大昌行食品加工及物流中心","en":"DCH Food Processing & Logistics Centre","dir":"O"},{"seq":18,"code":"K68-D160","tc":"有生鉛水(熱浸鋅)","en":"Yau Sang Galvanizers (Hot-Dip) Co Ltd","dir":"O"},{"seq":19,"code":"K68-D170","tc":"余仁生中心","en":"Eu Yan Sang Centre","dir":"O"},{"seq":20,"code":"K68-D180","tc":"元朗污水處理廠","en":"Yuen Long Sewage Treatment Works","dir":"O"},{"seq":21,"code":"K68-D190","tc":"雀巢","en":"Nestle (HK) Ltd","dir":"O"},{"seq":22,"code":"K68-D200","tc":"牛尾香港","en":"Ushio HK Ltd","dir":"O"},{"seq":23,"code":"K68-U011","tc":"元朗工業邨","en":"Yuen Long Industrial Estate","dir":"O"},{"seq":1,"code":"K68-D070","tc":"元朗廣場","en":"Yuen Long Plaza","dir":"O"},{"seq":2,"code":"K68-D080","tc":"元朗安寧路","en":"Yuen Long On Ning Road","dir":"O"},{"seq":3,"code":"K68-D090","tc":"大橋村","en":"Tai Kiu Tsuen","dir":"O"},{"seq":4,"code":"K68-D100","tc":"惠州學校","en":"Wai Chow School","dir":"O"},{"seq":5,"code":"K68-D110","tc":"朗屏邨珠屏樓","en":"\"Chu Ping House","dir":"O"},{"seq":6,"code":"K68-D120","tc":"朗屏","en":"Long Ping","dir":"O"},{"seq":7,"code":"K68-D130","tc":"橫洲福慶村","en":"Wang Chau Fuk Hing Tsuen","dir":"O"},{"seq":8,"code":"K68-D140","tc":"元朗紡織品","en":"Yuen Long Textile Co Ltd","dir":"O"},{"seq":9,"code":"K68-D150","tc":"大昌行食品加工及物流中心","en":"DCH Food Processing & Logistics Centre","dir":"O"},{"seq":10,"code":"K68-D160","tc":"有生鉛水(熱浸鋅)","en":"Yau Sang Galvanizers (Hot-Dip) Co Ltd","dir":"O"},{"seq":11,"code":"K68-D170","tc":"余仁生中心","en":"Eu Yan Sang Centre","dir":"O"},{"seq":12,"code":"K68-D180","tc":"元朗污水處理廠","en":"Yuen Long Sewage Treatment Works","dir":"O"},{"seq":13,"code":"K68-D190","tc":"雀巢","en":"Nestle (HK) Ltd","dir":"O"},{"seq":14,"code":"K68-D200","tc":"牛尾香港","en":"Ushio HK Ltd","dir":"O"},{"seq":15,"code":"K68-U011","tc":"元朗工業邨","en":"Yuen Long Industrial Estate","dir":"O"},{"seq":1,"code":"K68-D090","tc":"大橋村","en":"Tai Kiu Tsuen","dir":"O"},{"seq":2,"code":"K68-D100","tc":"惠州學校","en":"Wai Chow School","dir":"O"},{"seq":3,"code":"K68-D110","tc":"朗屏邨珠屏樓","en":"\"Chu Ping House","dir":"O"},{"seq":4,"code":"K68-D120","tc":"朗屏","en":"Long Ping","dir":"O"},{"seq":5,"code":"K68-D130","tc":"橫洲福慶村","en":"Wang Chau Fuk Hing Tsuen","dir":"O"},{"seq":6,"code":"K68-D140","tc":"元朗紡織品","en":"Yuen Long Textile Co Ltd","dir":"O"},{"seq":7,"code":"K68-D150","tc":"大昌行食品加工及物流中心","en":"DCH Food Processing & Logistics Centre","dir":"O"},{"seq":8,"code":"K68-D160","tc":"有生鉛水(熱浸鋅)","en":"Yau Sang Galvanizers (Hot-Dip) Co Ltd","dir":"O"},{"seq":9,"code":"K68-D170","tc":"余仁生中心","en":"Eu Yan Sang Centre","dir":"O"},{"seq":10,"code":"K68-D180","tc":"元朗污水處理廠","en":"Yuen Long Sewage Treatment Works","dir":"O"},{"seq":11,"code":"K68-D190","tc":"雀巢","en":"Nestle (HK) Ltd","dir":"O"},{"seq":12,"code":"K68-D200","tc":"牛尾香港","en":"Ushio HK Ltd","dir":"O"},{"seq":13,"code":"K68-U011","tc":"元朗工業邨","en":"Yuen Long Industrial Estate","dir":"O"},{"seq":1,"code":"K68-U010","tc":"元朗工業邨","en":"Yuen Long Industrial Estate","dir":"O"},{"seq":2,"code":"K68-U020","tc":"凸版資訊卡","en":"Toppan Forms Card Tech Ltd","dir":"O"},{"seq":3,"code":"K68-U030","tc":"雀巢","en":"Nestle (HK) Ltd","dir":"O"},{"seq":4,"code":"K68-U040","tc":"元朗污水處理廠","en":"Yuen Long Sewage Treatment Works","dir":"O"},{"seq":5,"code":"K68-U050","tc":"位元堂藥業大廈","en":"Wai Yuen Tong Medicine Building","dir":"O"},{"seq":6,"code":"K68-U060","tc":"東電化電子零件","en":"TDK Manufacturing (HK) Co Ltd","dir":"O"},{"seq":7,"code":"K68-U070","tc":"凸版印刷","en":"Toppan Printing Co (HK) Ltd","dir":"O"},{"seq":8,"code":"K68-U080","tc":"匯泉國際實業","en":"Telford International Industries Ltd","dir":"O"},{"seq":9,"code":"K68-U090","tc":"橫洲福慶村","en":"Wang Chau Fuk Hing Tsuen","dir":"O"},{"seq":10,"code":"K68-U100","tc":"朗屏","en":"Long Ping","dir":"O"},{"seq":11,"code":"K68-U110","tc":"楊屋村","en":"Yeung Uk Tsuen","dir":"O"},{"seq":12,"code":"K68-D090","tc":"大橋村","en":"Tai Kiu Tsuen","dir":"O"}],"K73":[{"seq":1,"code":"K73-U010","tc":"天恆","en":"Tin Heng","dir":"O"},{"seq":2,"code":"K73-U020","tc":"天逸邨逸潭樓","en":"\"Yat Tam House","dir":"O"},{"seq":3,"code":"K73-U030","tc":"天逸邨逸洋樓","en":"\"Yat Yeung House","dir":"O"},{"seq":4,"code":"K73-U040","tc":"天晴邨晴碧樓","en":"\"Ching Pik House","dir":"O"},{"seq":5,"code":"K73-U050","tc":"香港青年協會李兆基書院","en":"HKFYG Lee Shau Kee College","dir":"O"},{"seq":6,"code":"K73-U060","tc":"天葵路美湖居","en":"\"Maywood Court","dir":"O"},{"seq":7,"code":"K73-U070","tc":"天城路景湖居","en":"\"Kenswood Court","dir":"O"},{"seq":8,"code":"K73-U080","tc":"天慈邨","en":"Tin Tsz Estate","dir":"O"},{"seq":9,"code":"K73-U090","tc":"鳳池村","en":"Fung Chi Tsuen","dir":"O"},{"seq":10,"code":"K73-U100","tc":"朗屏 (巴士總站)","en":"Long Ping (Bus Terminus)","dir":"O"},{"seq":11,"code":"K73-U110","tc":"元朗盲人安老院","en":"Yuen Long Home for the Aged Blind","dir":"O"},{"seq":12,"code":"K73-U120","tc":"元朗西 (輕鐵豐年路站)","en":"Yuen Long West (LR Fung Nin Road Stop)","dir":"O"},{"seq":1,"code":"K73-D010","tc":"元朗西 (輕鐵豐年路站)","en":"Yuen Long West (LR Fung Nin Road Stop)","dir":"I"},{"seq":2,"code":"K73-D020","tc":"元朗安寧路","en":"Yuen Long On Ning Road","dir":"I"},{"seq":3,"code":"K73-D030","tc":"大橋村 (港鐵朗屏站)","en":"Tai Kiu Tsuen (MTR Long Ping Station)","dir":"I"},{"seq":4,"code":"K73-D040","tc":"惠州學校","en":"Wai Chow School","dir":"I"},{"seq":5,"code":"K73-D050","tc":"朗屏邨珠屏樓","en":"\"Chu Ping House","dir":"I"},{"seq":7,"code":"K73-D070","tc":"朗屏 (巴士總站)","en":"Long Ping (Bus Terminus)","dir":"I"},{"seq":8,"code":"K73-D080","tc":"鳳池村","en":"Fung Chi Tsuen","dir":"I"},{"seq":9,"code":"K73-D090","tc":"輕鐵天慈站","en":"LR Tin Tsz Stop","dir":"I"},{"seq":10,"code":"K73-D100","tc":"天水圍游泳池","en":"Tin Shui Wai Swimming Pool","dir":"I"},{"seq":11,"code":"K73-D110","tc":"天龍路景湖居","en":"\"Kenswood Court","dir":"I"},{"seq":12,"code":"K73-D120","tc":"天葵路麗湖居","en":"\"Lynwood Court","dir":"I"},{"seq":13,"code":"K73-D130","tc":"天晴邨晴雲樓","en":"\"Ching Wan House","dir":"I"},{"seq":14,"code":"K73-D140","tc":"天富苑能富閣","en":"\"Nang Fu House","dir":"I"},{"seq":15,"code":"K73-D150","tc":"天澤邨","en":"Tin Chak Estate","dir":"I"},{"seq":16,"code":"K73-D160","tc":"天恆","en":"Tin Heng","dir":"I"},{"seq":1,"code":"K73-U025","tc":"天恩","en":"Tin Yan","dir":"O"},{"seq":2,"code":"K73-U045","tc":"天悅邨","en":"Tin Yuet Estate","dir":"O"},{"seq":3,"code":"K73-U060","tc":"天葵路美湖居","en":"\"Maywood Court","dir":"O"},{"seq":4,"code":"K73-U070","tc":"天城路景湖居","en":"\"Kenswood Court","dir":"O"},{"seq":5,"code":"K73-U080","tc":"天慈邨","en":"Tin Tsz Estate","dir":"O"},{"seq":6,"code":"K73-U090","tc":"鳳池村","en":"Fung Chi Tsuen","dir":"O"},{"seq":7,"code":"K73-U100","tc":"朗屏","en":"Long Ping","dir":"O"},{"seq":8,"code":"K73-U110","tc":"元朗盲人安老院","en":"Yuen Long Home for the Aged Blind","dir":"O"},{"seq":9,"code":"K73-U120","tc":"元朗西","en":"Yuen Long West","dir":"O"},{"seq":1,"code":"K73-U050","tc":"香港青年協會李兆基書院","en":"HKFYG Lee Shau Kee College","dir":"O"},{"seq":2,"code":"K73-U060","tc":"天葵路美湖居","en":"\"Maywood Court","dir":"O"},{"seq":3,"code":"K73-U070","tc":"天城路景湖居","en":"\"Kenswood Court","dir":"O"},{"seq":4,"code":"K73-U080","tc":"天慈邨","en":"Tin Tsz Estate","dir":"O"},{"seq":5,"code":"K73-U090","tc":"鳳池村","en":"Fung Chi Tsuen","dir":"O"},{"seq":6,"code":"K73-U100","tc":"朗屏","en":"Long Ping","dir":"O"},{"seq":7,"code":"K73-U110","tc":"元朗盲人安老院","en":"Yuen Long Home for the Aged Blind","dir":"O"},{"seq":8,"code":"K73-U120","tc":"元朗西","en":"Yuen Long West","dir":"O"}],"K74":[{"seq":1,"code":"K74-U001","tc":"天水圍市中心","en":"Tin Shui Wai Town Centre","dir":"O"},{"seq":2,"code":"K74-U004","tc":"天頌苑頌棋閣","en":"Chung Ki House Tin Chung Court","dir":"O"},{"seq":3,"code":"K74-U007","tc":"天頌苑","en":"Tin Chung Court","dir":"O"},{"seq":4,"code":"K74-U010","tc":"天瑞","en":"Tin Shui","dir":"O"},{"seq":5,"code":"K74-U020","tc":"天水圍公園","en":"Tin Shui Wai Park","dir":"O"},{"seq":6,"code":"K74-U030","tc":"天慈邨","en":"Tin Tsz Estate","dir":"O"},{"seq":7,"code":"K74-U040","tc":"鳳池村","en":"Fung Chi Tsuen","dir":"O"},{"seq":8,"code":"K74-U050","tc":"朗屏 (巴士總站)","en":"Long Ping (Bus Terminus)","dir":"O"},{"seq":9,"code":"K74-U060","tc":"元朗盲人安老院","en":"Yuen Long Home for the Aged Blind","dir":"O"},{"seq":10,"code":"K74-U070","tc":"元朗廣場 (輕鐵豐年路站)","en":"Yuen Long Plaza (LR Fung Nin Road Stop)","dir":"O"},{"seq":11,"code":"K74-U080","tc":"開心廣場","en":"Yuen Long Landmark","dir":"O"},{"seq":12,"code":"K74-U090","tc":"港鐵元朗站(朗日路)  (港鐵元朗站)","en":"MTR Yuen Long Station (Long Yat Road) (MTR Yuen Long Station)","dir":"O"},{"seq":13,"code":"K74-U100","tc":"博愛醫院","en":"Pok Oi Hospital","dir":"O"},{"seq":14,"code":"K74-D010","tc":"東成里","en":"Tung Shing Lei","dir":"O"},{"seq":15,"code":"K74-D020","tc":"東華三院馬振玉中學(近朗善邨)","en":"TWGHs C.Y.Ma Memorial College (near Long Shin Estate)","dir":"O"},{"seq":16,"code":"K74-D030","tc":"大橋村 (港鐵朗屏站)","en":"Tai Kiu Tsuen (MTR Long Ping Station)","dir":"O"},{"seq":17,"code":"K74-D040","tc":"惠州學校","en":"Wai Chow School","dir":"O"},{"seq":18,"code":"K74-D050","tc":"朗屏邨珠屏樓","en":"\"Chu Ping House","dir":"O"},{"seq":19,"code":"K74-D060","tc":"朗屏 (巴士總站)","en":"Long Ping (Bus Terminus)","dir":"O"},{"seq":20,"code":"K74-D070","tc":"鳳池村","en":"Fung Chi Tsuen","dir":"O"},{"seq":21,"code":"K74-D080","tc":"輕鐵天慈站","en":"LR Tin Tsz Stop","dir":"O"},{"seq":22,"code":"K74-D090","tc":"天水圍公園","en":"Tin Shui Wai Park","dir":"O"},{"seq":23,"code":"K74-U011","tc":"天瑞","en":"Tin Shui","dir":"O"},{"seq":24,"code":"K74-D100","tc":"天華邨","en":"Tin Wah Estate","dir":"O"},{"seq":25,"code":"K74-D110","tc":"天悅邨","en":"Tin Yuet Estate","dir":"O"},{"seq":26,"code":"K74-U002","tc":"天水圍市中心","en":"Tin Shui Wai Town Centre","dir":"O"}],"K75A":[{"seq":1,"code":"K75A-U010","tc":"天水圍站 (輕鐵天水圍站)","en":"Tin Shui Wai Station (LR Tin Shui Wai Stop)","dir":"O"},{"seq":2,"code":"K75A-U020","tc":"天盛苑 (港鐵天水圍站)","en":"Tin Shing Court (MTR Tin Shui Wai Station)","dir":"O"},{"seq":3,"code":"K75A-U030","tc":"石埗村","en":"Shek Po Tsuen","dir":"O"},{"seq":4,"code":"K75A-D010","tc":"輕鐵洪水橋站","en":"LR Hung Shui Kiu Stop","dir":"O"},{"seq":5,"code":"K75A-D020","tc":"鄉事委員會","en":"Rural Committee","dir":"O"},{"seq":6,"code":"K75A-D030","tc":"田心","en":"Tin Sam","dir":"O"},{"seq":7,"code":"K75A-D040","tc":"新李屋村","en":"San Lee Uk Tsuen","dir":"O"},{"seq":8,"code":"K75A-D050","tc":"新生村","en":"San Sang Tsuen","dir":"O"},{"seq":9,"code":"K75A-D060","tc":"李屋村","en":"Lee Uk Tsuen","dir":"O"},{"seq":10,"code":"K75A-D070","tc":"新屋村","en":"San Uk Tsuen","dir":"O"},{"seq":11,"code":"K75A-D080","tc":"廈村市","en":"Ha Tsuen Shi","dir":"O"},{"seq":12,"code":"K75A-D090","tc":"廈村","en":"Ha Tsuen","dir":"O"},{"seq":13,"code":"K75A-D100","tc":"沙洲里村","en":"Sha Chau Lei Tsuen","dir":"O"},{"seq":14,"code":"K75A-D110","tc":"天盛苑 (港鐵天水圍站)","en":"Tin Shing Court (MTR Tin Shui Wai Station)","dir":"O"},{"seq":15,"code":"K75A-U011","tc":"天水圍站 (輕鐵天水圍站)","en":"Tin Shui Wai Station (LR Tin Shui Wai Stop)","dir":"O"}],"K75P":[{"seq":1,"code":"K75P-U010","tc":"天瑞","en":"Tin Shui","dir":"O"},{"seq":2,"code":"K75P-U020","tc":"天水圍公園","en":"Tin Shui Wai Park","dir":"O"},{"seq":3,"code":"K75P-U030","tc":"天耀邨耀盛樓","en":"\"Yiu Shing House","dir":"O"},{"seq":4,"code":"K75P-U040","tc":"輕鐵天耀站","en":"LR Tin Yiu Stop","dir":"O"},{"seq":5,"code":"K75P-U050","tc":"天盛苑 (港鐵天水圍站)","en":"Tin Shing Court (MTR Tin Shui Wai Station)","dir":"O"},{"seq":6,"code":"K75P-U060","tc":"石埗路","en":"Shek Po Road","dir":"O"},{"seq":7,"code":"K75P-U070","tc":"沙洲里村","en":"Sha Chau Lei Tsuen","dir":"O"},{"seq":8,"code":"K75P-U080","tc":"廈村市","en":"Ha Tsuen Shi","dir":"O"},{"seq":9,"code":"K75P-U090","tc":"新屋村","en":"San Uk Tsuen","dir":"O"},{"seq":10,"code":"K75P-U100","tc":"李屋村","en":"Lee Uk Tsuen","dir":"O"},{"seq":11,"code":"K75P-U110","tc":"新生村","en":"San Sang Tsuen","dir":"O"},{"seq":12,"code":"K75P-U120","tc":"新李屋村","en":"San Lee Uk Tsuen","dir":"O"},{"seq":13,"code":"K75P-U130","tc":"田心","en":"Tin Sam","dir":"O"},{"seq":14,"code":"K75P-U140","tc":"鄉事委員會","en":"Rural Committee","dir":"O"},{"seq":15,"code":"K75P-D010","tc":"輕鐵洪水橋站","en":"LR Hung Shui Kiu Stop","dir":"O"},{"seq":16,"code":"K75P-D020","tc":"洪水橋巴士廠","en":"Hung Shui Kiu Bus Depot","dir":"O"},{"seq":17,"code":"K75P-D030","tc":"洪福邨","en":"Hung Fuk Estate","dir":"O"},{"seq":18,"code":"K75P-D040","tc":"石埗村","en":"Shek Po Tsuen","dir":"O"},{"seq":19,"code":"K75P-D050","tc":"天盛苑 (港鐵天水圍站)","en":"Tin Shing Court (MTR Tin Shui Wai Station)","dir":"O"},{"seq":20,"code":"K75P-D060","tc":"天水圍警署","en":"Tin Shui Wai Police Station","dir":"O"},{"seq":21,"code":"K75P-D070","tc":"賞湖居","en":"Sherwood Court","dir":"O"},{"seq":22,"code":"K75P-D080","tc":"天水圍公園","en":"Tin Shui Wai Park","dir":"O"},{"seq":23,"code":"K75P-U011","tc":"天瑞","en":"Tin Shui","dir":"O"},{"seq":1,"code":"K75P-D020","tc":"洪水橋巴士廠","en":"Hung Shui Kiu Bus Depot","dir":"O"},{"seq":2,"code":"K75P-D030","tc":"洪福邨","en":"Hung Fuk Estate","dir":"O"},{"seq":3,"code":"K75P-D040","tc":"石埗村","en":"Shek Po Tsuen","dir":"O"},{"seq":4,"code":"K75P-D050","tc":"天盛苑","en":"Tin Shing Court","dir":"O"},{"seq":5,"code":"K75P-D060","tc":"天水圍警署","en":"Tin Shui Wai Police Station","dir":"O"},{"seq":6,"code":"K75P-D070","tc":"賞湖居","en":"Sherwood Court","dir":"O"},{"seq":7,"code":"K75P-D080","tc":"天水圍公園","en":"Tin Shui Wai Park","dir":"O"},{"seq":8,"code":"K75P-U011","tc":"天瑞","en":"Tin Shui","dir":"O"}],"K75S":[{"seq":1,"code":"K75S-U040","tc":"洪水橋巴士廠","en":"Hung Shui Kiu Bus Depot","dir":"O"},{"seq":2,"code":"K75S-D010","tc":"洪福邨","en":"Hung Fuk Estate","dir":"O"},{"seq":3,"code":"K75S-D020","tc":"石埗村","en":"Shek Po Tsuen","dir":"O"},{"seq":4,"code":"K75S-D030","tc":"天盛苑","en":"Tin Shing Court","dir":"O"},{"seq":5,"code":"K75S-U011","tc":"天水圍站","en":"Tin Shui Wai Station","dir":"O"},{"seq":1,"code":"K75S-U010","tc":"天水圍站","en":"Tin Shui Wai Station","dir":"O"},{"seq":2,"code":"K75S-U020","tc":"天盛苑","en":"Tin Shing Court","dir":"O"},{"seq":3,"code":"K75S-U030","tc":"石埗村","en":"Shek Po Tsuen","dir":"O"},{"seq":4,"code":"K75S-U040","tc":"洪水橋巴士廠","en":"Hung Shui Kiu Bus Depot","dir":"O"},{"seq":5,"code":"K75S-D010","tc":"洪福邨","en":"Hung Fuk Estate","dir":"O"},{"seq":6,"code":"K75S-D020","tc":"石埗村","en":"Shek Po Tsuen","dir":"O"},{"seq":7,"code":"K75S-D030","tc":"天盛苑","en":"Tin Shing Court","dir":"O"},{"seq":8,"code":"K75S-U011","tc":"天水圍站","en":"Tin Shui Wai Station","dir":"O"}],"K76":[{"seq":1,"code":"K76-U010","tc":"天恆","en":"Tin Heng","dir":"O"},{"seq":2,"code":"K76-U020","tc":"天逸邨逸潭樓","en":"\"Yat Tam House","dir":"O"},{"seq":3,"code":"K76-U030","tc":"天富苑欣富閣","en":"\"Yan Fu House","dir":"O"},{"seq":4,"code":"K76-U040","tc":"天盛苑 (港鐵天水圍站)","en":"Tin Shing Court (MTR Tin Shui Wai Station)","dir":"O"},{"seq":5,"code":"K76-U050","tc":"天水圍站 (港鐵天水圍站)","en":"Tin Shui Wai Station (MTR Tin Shui Wai Station)","dir":"O"},{"seq":1,"code":"K76-D010","tc":"天水圍站 (港鐵天水圍站)","en":"Tin Shui Wai Station (MTR Tin Shui Wai Station)","dir":"I"},{"seq":2,"code":"K76-D020","tc":"天恩邨","en":"Tin Yan Estate","dir":"I"},{"seq":3,"code":"K76-D030","tc":"天澤邨","en":"Tin Chak Estate","dir":"I"},{"seq":4,"code":"K76-D040","tc":"天恆","en":"Tin Heng","dir":"I"}],"K76S":[{"seq":1,"code":"K76S-U010","tc":"濕地公園路(近天葵路)","en":"Wetland Park Road (near Tin Kwai Road)","dir":"O"},{"seq":2,"code":"K76S-U015","tc":"輕鐵濕地公園站","en":"LR Wetland Park Stop","dir":"O"},{"seq":3,"code":"K76S-U020","tc":"天逸邨逸潭樓","en":"\"Yat Tam House","dir":"O"},{"seq":4,"code":"K76S-U030","tc":"天富苑欣富閣","en":"\"Yan Fu House","dir":"O"},{"seq":5,"code":"K76S-U040","tc":"天盛苑","en":"Tin Shing Court","dir":"O"},{"seq":1,"code":"K76S-D010","tc":"天水圍站","en":"Tin Shui Wai Station","dir":"I"},{"seq":2,"code":"K76S-D020","tc":"天恩邨","en":"Tin Yan Estate","dir":"I"},{"seq":3,"code":"K76S-D030","tc":"天澤邨","en":"Tin Chak Estate","dir":"I"},{"seq":4,"code":"K76S-D040","tc":"輕鐵濕地公園站","en":"LR Wetland Park Stop","dir":"I"},{"seq":5,"code":"K76S-D050","tc":"濕地公園路(近天葵路)","en":"Wetland Park Road (near Tin Kwai Road)","dir":"I"}]};
+
+
+// ── State ──
+const KMB_API = 'https://data.etabus.gov.hk/v1/transport/kmb';
+const CTB_API = 'https://rt.data.gov.hk/v2/transport/citybus';
+const REFRESH_MS = 30000, CACHE_MS = 86400000;
+const FAVORITES_KEY = 'busEtaFavorites';
+let S = {company:'KMB',route:'',dir:'outbound',serviceType:null,stopSeq:null,stopId:null,stopCode:null,stopName:'',destName:''};
+let storageMessage = '', searchGeneration = 0, detailGeneration = 0;
+let managingFavs = false, favRefresh = null, refreshTimer = null;
+let lastFavSuccess = 0, lastDetailSuccess = 0, detailKey = '', detailPending = false;
+const favResults = new Map(); // Last displayed data only; never used as a request cache.
+const staticRequests = new Map();
+let stopCache = loadStopCache();
+let favs = loadFavs();
+
+// ── Storage / legacy migration ──
+function readStorage(key, fallback){
+  try{ const raw = localStorage.getItem(key); return raw === null ? fallback : JSON.parse(raw); }
+  catch(e){ return fallback; }
+}
+function writeStorage(key, value){
+  try{ localStorage.setItem(key, JSON.stringify(value)); return true; }
+  catch(e){ return false; }
+}
+function directionCode(dir){ return dir==='inbound'||dir==='I' ? 'I' : 'O'; }
+function serviceTypeOf(f){ return String(f.serviceType || f.service_type || '1'); }
+function favKey(f){
+  return JSON.stringify([String(f.company).toUpperCase(), String(f.route).trim().toUpperCase(),
+    directionCode(f.dir), f.company==='KMB' ? serviceTypeOf(f) : '',
+    String(f.stopCode||f.stopId||'').toUpperCase()]);
+}
+function validFav(f){
+  return f && typeof f==='object' && !Array.isArray(f) && ['KMB','CTB','MTR'].includes(f.company)
+    && typeof f.route==='string' && /^[A-Z0-9]+$/i.test(f.route.trim())
+    && typeof (f.stopCode||f.stopId)==='string';
+}
+function mergeFavs(local, incoming){
+  const result = [], keys = new Map();
+  for(const f of [...local, ...incoming]){
+    if(!validFav(f)) continue;
+    const key = favKey(f);
+    if(keys.has(key)){
+      const index = keys.get(key);
+      // Keep local order/values, but retain additional legacy fields.
+      result[index] = {...f, ...result[index]};
+    }else{ keys.set(key,result.length); result.push({...f}); }
+  }
+  return result;
+}
+function loadFavs(){
+  const stored = readStorage(FAVORITES_KEY, []);
+  let result = mergeFavs(Array.isArray(stored)?stored:[], []);
+  const m = location.hash.match(/^#favs=(.+)$/);
+  if(!m) return result;
+  try{
+    // Preserve the original UTF-8/base64 decoding for existing shared URLs.
+    const legacy = JSON.parse(decodeURIComponent(escape(atob(m[1]))));
+    if(!Array.isArray(legacy) || !legacy.every(validFav)) throw new Error('legacy');
+    const savedImports = readStorage('busEtaLegacyImports', []);
+    const imports = Array.isArray(savedImports) ? savedImports.filter(x=>typeof x==='string') : [];
+    if(!imports.includes(m[1])) result = mergeFavs(result,legacy);
+    // Never discard the only copy if storage is unavailable/full.
+    if(writeStorage(FAVORITES_KEY,result) && writeStorage('busEtaLegacyImports',[...new Set([...imports,m[1]])])){
+      history.replaceState(history.state,'',location.pathname+location.search);
+    }else storageMessage = '未能儲存至裝置 · 舊收藏網址已保留，請勿清除';
+  }catch(e){ storageMessage = '舊收藏網址未能匯入 · 原網址已保留'; }
+  return result;
+}
+function persistFavs(){
+  const saved = writeStorage(FAVORITES_KEY,favs);
+  storageMessage = saved ? '' : '未能儲存至裝置 · 關閉後可能遺失更改';
+  document.getElementById('storageStatus').textContent = storageMessage;
+  return saved;
+}
+
+// ── Static cache / limited concurrency ──
+function loadStopCache(){
+  const c = readStorage('busEtaStopCache',null);
+  if(c && Number.isFinite(c.timestamp) && Date.now()-c.timestamp>=0 && Date.now()-c.timestamp<CACHE_MS
+    && c.entries && typeof c.entries==='object' && !Array.isArray(c.entries)) return c;
+  return {timestamp:Date.now(),entries:{}};
+}
+function staticRequest(key, task){
+  const entry = staticRequests.get(key);
+  if(entry && Date.now()-entry.timestamp<CACHE_MS) return entry.promise;
+  const promise = Promise.resolve().then(task).catch(e=>{ staticRequests.delete(key); throw e; });
+  staticRequests.set(key,{timestamp:Date.now(),promise});
+  return promise;
+}
+async function mapLimit(items, limit, task){
+  const results = new Array(items.length);
+  let next = 0;
+  await Promise.all(Array.from({length:Math.min(limit,items.length)},async()=>{
+    while(next<items.length){ const i=next++; results[i]=await task(items[i],i); }
+  }));
+  return results;
+}
+// One stop queue shared by overlapping searches, so the limit stays at eight.
+const stopQueue = [];
+let activeStops = 0;
+function limitStopRequest(task){
+  return new Promise((resolve,reject)=>{ stopQueue.push({task,resolve,reject}); drainStopQueue(); });
+}
+function drainStopQueue(){
+  while(activeStops<8 && stopQueue.length){
+    const job=stopQueue.shift(); activeStops++;
+    Promise.resolve().then(job.task).then(job.resolve,job.reject).finally(()=>{activeStops--;drainStopQueue();});
+  }
+}
+async function getStopInfo(co, id){
+  if(Date.now()-stopCache.timestamp>=CACHE_MS) stopCache={timestamp:Date.now(),entries:{}};
+  const key=co+':'+id, hit=stopCache.entries[key];
+  if(hit && (typeof hit.name_tc==='string'||typeof hit.name_en==='string')) return hit;
+  return staticRequest('stop:'+key,()=>limitStopRequest(async()=>{
+    const response=await fj(`${co==='KMB'?KMB_API:CTB_API}/stop/${encodeURIComponent(id)}`);
+    const d=response.data;
+    if(!d || !(textValue(d.name_tc)||textValue(d.name_en))) throw new Error('data');
+    stopCache.entries[key]={name_tc:textValue(d.name_tc),name_en:textValue(d.name_en)};
+    return stopCache.entries[key];
+  }));
+}
+
+// ── Network helpers ──
+async function fj(url, options={}){
+  const controller=new AbortController();
+  const timer=setTimeout(()=>controller.abort(),10000);
+  try{
+    const response=await fetch(url,{...options,signal:controller.signal});
+    if(!response.ok){ const error=new Error('http'); error.status=response.status; throw error; }
+    const data=await response.json();
+    if(!data || typeof data!=='object') throw new Error('data');
+    return data;
+  }finally{ clearTimeout(timer); }
+}
+function cycleRequest(cache,key,task){
+  if(!cache.has(key)) cache.set(key,Promise.resolve().then(task));
+  return cache.get(key);
+}
+function dataArray(response){
+  if(!Array.isArray(response.data)) throw new Error('data');
+  return response.data.filter(x=>x && typeof x==='object');
+}
+function errorMessage(e){
+  if(navigator.onLine===false) return '目前離線 · 請稍後再試';
+  if(e.name==='AbortError') return '連線逾時 · 請再試一次';
+  if(e.status===429) return '資料繁忙 · 請稍後再試';
+  if(e.status===404||e.status===422) return '找不到此路線或方向 · 請確認';
+  return '暫時無法取得資料 · 請稍後再試';
+}
+
+// ── UI utilities / safe external text ──
+function textValue(value){ return typeof value==='string' ? value : ''; }
+function escapeHTML(value){
+  return String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+let toastTimer;
+function toast(msg, ms=2600){
+  const e=document.getElementById('toast'); e.textContent=msg; e.classList.add('show');
+  clearTimeout(toastTimer); toastTimer=setTimeout(()=>e.classList.remove('show'),ms);
+}
+function show(id){
+  const el=document.getElementById(id); el.style.display='block';
+  el.scrollIntoView({behavior:window.matchMedia('(prefers-reduced-motion:reduce)').matches?'auto':'smooth',block:'start'});
+}
+function onCoChange(){
+  const co=document.getElementById('companySelect').value;
+  document.getElementById('mtrNote').style.display=co==='MTR'?'block':'none';
+  writeStorage('busEtaOperator',co);
+  invalidateSearch();
+}
+function invalidateSearch(){
+  searchGeneration++;
+  document.getElementById('searchBtn').disabled=false;
+  document.getElementById('searchBtn').textContent='搜尋站點';
+  document.getElementById('serviceField').style.display='none';
+  document.getElementById('stopSection').style.display='none';
+}
+
+// ── ETA formatting (shared by favourites and detail) ──
+function hkTime(value){
+  const d=new Date(value);
+  return Number.isFinite(d.getTime()) ? d.toLocaleTimeString('en-GB',{timeZone:'Asia/Hong_Kong',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}) : '—';
+}
+function minsCls(m){ return m<=3?'arriving':m<=8?'soon':'normal'; }
+function formatFromDate(value, now=Date.now()){
+  const at=new Date(value).getTime();
+  if(!Number.isFinite(at)) return null;
+  const mins=Math.max(0,Math.ceil((at-now)/60000));
+  return {main:at-now<=60000?'即將':`${mins} 分`,sub:hkTime(at),cls:minsCls(mins),sort:at,at};
+}
+function parseBusEtas(etas,now=Date.now()){
+  const rows=etas.filter(e=>typeof e.eta==='string' && e.eta.trim())
+    .map(e=>{ const p=formatFromDate(e.eta,now); return p?{...p,rmk:textValue(e.rmk_tc)||textValue(e.rmk_en)}:null; })
+    .filter(p=>p && p.at>=now).sort((a,b)=>a.at-b.at).slice(0,3);
+  const remarks=[...new Set(etas.map(e=>textValue(e.rmk_tc)||textValue(e.rmk_en)).filter(Boolean))];
+  return {rows,message:rows.length?'':remarks.join(' · ')};
+}
+function flag(value){ return value===true||value===1||value==='1'; }
+function numberValue(value){
+  return (typeof value==='number'||typeof value==='string') && String(value).trim()!=='' && Number.isFinite(Number(value)) ? Number(value) : NaN;
+}
+
+// ── KMB helpers: discover valid service types; upgrade old favourites ──
+function kmbRoutes(){ return staticRequest('kmb-routes',async()=>dataArray(await fj(`${KMB_API}/route/`))); }
+function kmbRouteStops(route,dir,serviceType){
+  return staticRequest(`kmb-stops:${route}:${dir}:${serviceType}`,async()=>
+    dataArray(await fj(`${KMB_API}/route-stop/${encodeURIComponent(route)}/${dir}/${encodeURIComponent(serviceType)}`)));
+}
+function routeVariants(routes,route,dir){
+  return routes.filter(r=>r.route===route && r.bound===directionCode(dir) && /^\d+$/.test(String(r.service_type)))
+    .sort((a,b)=>Number(a.service_type)-Number(b.service_type));
+}
+async function resolveKmbFavourite(f){
+  if(f.serviceType||f.service_type) return {...f,serviceType:serviceTypeOf(f)};
+  const variants=routeVariants(await kmbRoutes(),f.route,f.dir);
+  // The old app used type 1. Prefer it only if this stop is still on that service.
+  for(const r of variants){
+    const stops=await kmbRouteStops(f.route,f.dir,String(r.service_type));
+    const matches=stops.filter(s=>s.stop===f.stopId);
+    const stop=matches.find(s=>Number(s.seq)===Number(f.stopSeq)) || (matches.length===1?matches[0]:null);
+    if(stop) return {...f,serviceType:String(r.service_type),stopSeq:Number(stop.seq),destName:r.dest_tc||r.dest_en||f.destName};
+  }
+  return {...f}; // Type 1 is a temporary filtering fallback, not a saved guess.
+}
+function filterBusEtas(etas,f){
+  const wantedDir=f.etaDir||directionCode(f.dir);
+  return etas.filter(e=>{
+    if(String(e.route).toUpperCase()!==f.route.toUpperCase()) return false;
+    if(e.co && e.co!==f.company) return false;
+    if(e.stop && String(e.stop).toUpperCase()!==String(f.stopId).toUpperCase()) return false;
+    const dir=e.dir||e.bound;
+    if(dir && dir!==wantedDir) return false;
+    if(numberValue(e.seq)>0 && numberValue(f.stopSeq)>0 && Number(e.seq)!==Number(f.stopSeq)) return false;
+    if(f.company==='KMB' && e.service_type!=null && String(e.service_type)!==serviceTypeOf(f)) return false;
+    return true;
+  });
+}
+
+// ── Citybus helpers ──
+function ctbRoute(route){
+  return staticRequest('ctb-route:'+route,async()=>{
+    const response=await fj(`${CTB_API}/route/CTB/${encodeURIComponent(route)}`);
+    if(!response.data || Array.isArray(response.data) || !response.data.route) throw new Error('data');
+    return response.data;
+  });
+}
+function ctbRouteStops(route,dir){
+  return staticRequest(`ctb-stops:${route}:${dir}`,async()=>dataArray(await fj(`${CTB_API}/route-stop/CTB/${encodeURIComponent(route)}/${dir}`)));
+}
+function ctbDestination(route,dir){
+  return dir==='inbound' ? textValue(route.orig_tc)||textValue(route.orig_en) : textValue(route.dest_tc)||textValue(route.dest_en);
+}
+async function filterCtbEtas(etas,f){
+  const direct=filterBusEtas(etas,f);
+  if(parseBusEtas(direct).rows.length) return direct;
+  // Never mix the opposite direction just because a normal route has no ETA.
+  // Some one-direction loops label ETA differently from their route-stop list.
+  // Allow that only after verifying the topology and the exact stop occurrence.
+  const opposite=f.dir==='outbound'?'inbound':'outbound';
+  const candidates=filterBusEtas(etas,{...f,etaDir:directionCode(opposite)});
+  if(!candidates.length) return direct;
+  try{
+    const [selected,other]=await Promise.all([ctbRouteStops(f.route,f.dir),ctbRouteStops(f.route,opposite)]);
+    if(other.length===0 && selected.some(s=>s.stop===f.stopId && Number(s.seq)===Number(f.stopSeq))){
+      return [...direct,...candidates.filter(e=>Number(e.seq)===Number(f.stopSeq))];
+    }
+  }catch(e){ /* Without topology evidence, keep the safe direction filter. */ }
+  return direct;
+}
+
+// ── MTR helpers (embedded route / stop fallback above is unchanged) ──
+async function fetchMtrSchedule(route){
+  const data=await fj('https://rt.data.gov.hk/v1/transport/mtr/bus/getSchedule',{
+    method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({language:'zh',routeName:route})
+  });
+  if(!Array.isArray(data.busStop) && !flag(data.isSuspended)) throw new Error('data');
+  return data;
+}
+function parseMtrBus(buses,now=Date.now()){
+  if(!Array.isArray(buses)) return [];
+  return buses.filter(b=>b && !flag(b.isSuspended)).map(b=>{
+    const arr=numberValue(b.arrivalTimeInSecond), dep=numberValue(b.departureTimeInSecond);
+    if(arr<=0 && dep<0) return null; // Explicitly departed, not "arriving".
+    const sec=arr>=0 && arr<86400 ? arr : dep>=0 && dep<86400 ? dep : NaN;
+    const rmk=textValue(b.busRemark)|| (flag(b.isDelayed)?'班次延誤':flag(b.isScheduled)?'預定班次':'');
+    if(Number.isFinite(sec)) return {...formatFromDate(now+sec*1000,now),rmk};
+    const txt=textValue(b.arrivalTimeText)||textValue(b.departureTimeText);
+    return txt && !(arr<0 && dep<0) ? {main:txt,sub:'',cls:'normal',sort:Infinity,rmk} : null;
+  }).filter(Boolean).sort((a,b)=>a.sort-b.sort).slice(0,3);
+}
+function mtrStops(route,dir){
+  const all=MTR_ROUTES[route]||[];
+  const selected=all.filter(s=>s.dir===directionCode(dir));
+  // Preserve the existing one-direction / circular-route fallback.
+  return (selected.length?selected:all).slice().sort((a,b)=>a.seq-b.seq);
+}
+
+// ── Shared ETA retrieval ──
+async function getEtas(f, cache=new Map()){
+  f={...f,route:f.route.trim().toUpperCase(),dir:directionCode(f.dir)==='I'?'inbound':'outbound'};
+  if(f.company==='MTR'){
+    const data=await cycleRequest(cache,'mtr:'+f.route,()=>fetchMtrSchedule(f.route));
+    const stop=(data.busStop||[]).find(bs=>bs && String(bs.busStopId).toUpperCase()===String(f.stopCode||f.stopId).toUpperCase());
+    const suspended=flag(data.isSuspended)||flag(stop?.isSuspended);
+    if(stop?.bus!=null && !Array.isArray(stop.bus)) throw new Error('data');
+    const seconds=numberValue(data.appRefreshTimeInSecond);
+    return {rows:suspended?[]:parseMtrBus(stop?.bus),message:suspended?'暫停服務':textValue(stop?.busStopRemark),
+      refreshMs:Number.isFinite(seconds)&&seconds>0?Math.max(REFRESH_MS,Math.min(seconds*1000,300000)):REFRESH_MS};
+  }
+  if(f.company==='KMB'){
+    // ETA requests sharing a stop use the same Promise, including failures.
+    const response=await cycleRequest(cache,'kmb:'+f.stopId,()=>fj(`${KMB_API}/stop-eta/${encodeURIComponent(f.stopId)}`));
+    const etas=dataArray(response);
+    let resolved=f;
+    try{ resolved=await resolveKmbFavourite(f); }catch(e){ /* Keep missing serviceType unresolved for a later retry. */ }
+    const result=parseBusEtas(filterBusEtas(etas,resolved));
+    return {...result,resolved};
+  }
+  const response=await cycleRequest(cache,`ctb:${f.stopId}:${f.route}`,()=>fj(`${CTB_API}/eta/CTB/${encodeURIComponent(f.stopId)}/${encodeURIComponent(f.route)}`));
+  const result=parseBusEtas(await filterCtbEtas(dataArray(response),f));
+  // Correct destinations on existing favourites too; metadata failure must not hide ETA.
+  try{ return {...result,resolved:{...f,destName:ctbDestination(await ctbRoute(f.route),f.dir)}}; }
+  catch(e){ return result; }
+}
+
+// ── Search ──
+async function doSearch(keepService=false){
+  const company=document.getElementById('companySelect').value;
+  const route=document.getElementById('routeInput').value.trim().toUpperCase();
+  const dir=document.getElementById('dirSelect').value;
+  document.getElementById('routeInput').value=route;
+  if(!/^[A-Z0-9]+$/.test(route)){ toast('請輸入有效路線號碼，例如 58M 或 K51'); return; }
+  const generation=++searchGeneration;
+  detailGeneration++; detailPending=false;
+  const serviceType=keepService?document.getElementById('serviceSelect').value:null;
+  const selection={company,route,dir,serviceType,stopId:null,stopCode:null,stopSeq:null,stopName:'',destName:''};
+  S=selection;
+  const btn=document.getElementById('searchBtn'); btn.textContent='搜尋中…'; btn.disabled=true;
+  document.getElementById('stopSection').style.display='none';
+  document.getElementById('etaSection').style.display='none';
+  document.getElementById('serviceField').style.display='none';
+  try{
+    if(company==='MTR') searchMTR(route,dir,selection);
+    else await searchBus(company,route,dir,selection,generation);
+  }catch(e){ if(generation===searchGeneration) toast(errorMessage(e)); }
+  finally{ if(generation===searchGeneration){btn.textContent='搜尋站點';btn.disabled=false;} }
+}
+async function searchBus(co,route,dir,selection,generation){
+  let stops;
+  if(co==='KMB'){
+    const variants=routeVariants(await kmbRoutes(),route,dir);
+    if(generation!==searchGeneration) return;
+    if(!variants.length){toast('找不到此路線或方向 · 請確認');return;}
+    const selected=variants.find(r=>String(r.service_type)===selection.serviceType)||variants[0];
+    selection.serviceType=String(selected.service_type);
+    selection.destName=selected.dest_tc||selected.dest_en||'';
+    const select=document.getElementById('serviceSelect'); select.replaceChildren();
+    variants.forEach(r=>{
+      const option=document.createElement('option'); option.value=String(r.service_type);
+      option.textContent=`${r.orig_tc||r.orig_en} → ${r.dest_tc||r.dest_en}${variants.length>1?' · 服務 '+r.service_type:''}`;
+      select.appendChild(option);
+    });
+    select.value=selection.serviceType;
+    document.getElementById('serviceField').style.display=variants.length>1?'flex':'none';
+    stops=await kmbRouteStops(route,dir,selection.serviceType);
+  }else{
+    const [routeStops,routeInfo]=await Promise.all([ctbRouteStops(route,dir),ctbRoute(route)]);
+    stops=routeStops;
+    selection.destName=ctbDestination(routeInfo,dir);
+  }
+  if(generation!==searchGeneration) return;
+  if(!stops.length){toast('找不到此路線或方向 · 請嘗試另一方向');return;}
+  stops=stops.slice().sort((a,b)=>Number(a.seq)-Number(b.seq));
+  const details=await mapLimit(stops,8,async s=>{
+    if(generation!==searchGeneration) return null;
+    try{return await getStopInfo(co,s.stop);}catch(e){return null;}
+  });
+  writeStorage('busEtaStopCache',stopCache);
+  if(generation!==searchGeneration) return;
+  const list=document.getElementById('stopList'); list.replaceChildren();
+  stops.forEach((s,i)=>{
+    const d=details[i];
+    const tc=d?(d.name_tc||d.name_en):`站名暫未能載入 (${s.stop})`;
+    addStopEl(list,Number(s.seq)||i+1,s.stop,null,tc,d?.name_en||'',{...selection,etaDir:s.dir||s.bound||directionCode(dir)});
+  });
+  if(details.some(d=>!d)) toast('部分站名未能載入 · 請再搜尋以重試');
+  S={...selection}; show('stopSection');
+}
+function searchMTR(route,dir,selection=S){
+  const stops=mtrStops(route,dir);
+  if(!stops.length){ toast('找不到此港鐵巴士路線 · 請確認路線號碼');return; }
+  // Some embedded routes contain short workings; keep every existing stop.
+  selection.dir=stops[0].dir==='I'?'inbound':'outbound';
+  document.getElementById('dirSelect').value=selection.dir;
+  selection.destName=stops[stops.length-1].tc||stops[stops.length-1].en||'';
+  const list=document.getElementById('stopList'); list.replaceChildren();
+  stops.forEach(s=>addStopEl(list,s.seq,null,s.code,s.tc||MTR_STOPS[s.code]?.tc||s.en||s.code,s.en,selection));
+  S={...selection}; show('stopSection');
+}
+function addStopEl(list,seq,stopId,stopCode,tc,en,selection=S){
+  const button=document.createElement('button'); button.type='button'; button.className='stop-item';
+  button.innerHTML=`<span class="stop-seq">${escapeHTML(seq)}</span><span class="stop-info"><span class="stop-name">${escapeHTML(tc)}</span>
+    ${en&&en!==tc?`<span class="stop-sub" style="display:block">${escapeHTML(en)}</span>`:''}</span>
+    <svg class="stop-chk" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>`;
+  button.addEventListener('click',()=>pickStop(button,seq,stopId,stopCode,tc,selection));
+  list.appendChild(button);
+}
+async function pickStop(el,seq,stopId,stopCode,tc,selection=S){
+  document.querySelectorAll('.stop-item').forEach(i=>{i.classList.remove('selected');i.setAttribute('aria-pressed','false');});
+  el.classList.add('selected');el.setAttribute('aria-pressed','true');
+  S={...selection,stopSeq:seq,stopId,stopCode,stopName:tc};
+  updateDetailHead();show('etaSection');await loadETA();
+}
+
+// ── ETA detail view ──
+function updateDetailHead(){
+  document.getElementById('etaBadge').textContent=S.route;
+  document.getElementById('etaDest').textContent='往 '+(S.destName||'終點站');
+  document.getElementById('etaSname').textContent=S.stopName;
+  document.getElementById('etaHead').classList.toggle('mtr',S.company==='MTR');
+}
+async function loadETA(cache=new Map()){
+  if(!S.stopId&&!S.stopCode) return;
+  const generation=++detailGeneration, selection={...S}, key=favKey(S);
+  const same=key===detailKey;
+  detailPending=true;
+  if(!same){
+    detailKey=key;lastDetailSuccess=0;
+    document.getElementById('etaRows').innerHTML='<div class="status-box"><p>載入中…</p></div>';
+    document.getElementById('upd').textContent='';
+  }
+  const btn=document.getElementById('refBtn');btn.classList.add('spin');btn.setAttribute('aria-busy','true');
+  try{
+    const result=await getEtas(selection,cache);
+    if(generation!==detailGeneration) return;
+    if(result.resolved){S={...S,...result.resolved};detailKey=favKey(S);updateDetailHead();}
+    if(result.rows.length) renderDetailRows(result.rows);
+    else showNoETA(result.message);
+    lastDetailSuccess=Date.now();
+    document.getElementById('upd').textContent='最後更新 '+hkTime(lastDetailSuccess);
+  }catch(e){
+    if(generation!==detailGeneration) return;
+    if(!lastDetailSuccess) showNoETA(errorMessage(e),'未能取得資料');
+    document.getElementById('upd').textContent=(lastDetailSuccess?'最後更新 '+hkTime(lastDetailSuccess)+' · 顯示上次資料 · ':'')+errorMessage(e);
+  }finally{
+    if(generation===detailGeneration){detailPending=false;btn.classList.remove('spin');btn.setAttribute('aria-busy','false');}
+  }
+}
+function doRefresh(){return loadETA();}
+function renderDetailRows(rows){
+  const el=document.getElementById('etaRows');el.replaceChildren();
+  rows.forEach((r,i)=>{
+    const d=document.createElement('div');d.className='eta-row';
+    d.innerHTML=`<div class="eta-idx">${i+1}</div><div class="eta-tb"><div class="eta-hm">${escapeHTML(r.sub||'—')}</div>
+      ${r.rmk?`<div class="eta-rmk">${escapeHTML(r.rmk)}</div>`:''}</div>
+      <div><div class="eta-min ${escapeHTML(r.cls)}">${escapeHTML(r.main)}</div></div>`;
+    el.appendChild(d);
+  });
+}
+function showNoETA(message='',title='暫無班次'){
+  document.getElementById('etaRows').innerHTML=`<div class="status-box"><h3>${escapeHTML(title)}</h3><p>${escapeHTML(message||'此時段可能沒有服務')}</p></div>`;
+}
+
+// ── Favourites ──
+function favDestination(f){
+  const co=f.company==='KMB'?'九巴 / 龍運':f.company==='CTB'?'城巴':'港鐵巴士';
+  return `往 ${f.destName||'終點站'} · ${co} · ${directionCode(f.dir)==='O'?'去程':'回程'}${f.company==='KMB'&&serviceTypeOf(f)!=='1'?' · 服務 '+serviceTypeOf(f):''}`;
+}
+function renderFavs(){
+  const list=document.getElementById('favList');list.replaceChildren();
+  document.getElementById('manageFavBtn').disabled=!favs.length;
+  document.getElementById('refreshFavBtn').disabled=!favs.length||!!favRefresh;
+  if(!favs.length){
+    list.innerHTML='<div class="status-box" style="padding:1.25rem"><p>未有常用路線，搜尋後可儲存</p></div>';
+    document.getElementById('favUpdated').textContent='';return;
+  }
+  favs.forEach((f,i)=>{
+    const item=document.createElement('div');item.className='fav-item';
+    const pill=document.createElement('button');pill.className='fav-pill'+(f.company==='MTR'?' mtr':'');
+    pill.textContent=f.route;pill.setAttribute('aria-label',`查看 ${f.route} ${f.stopName} 到站時間`);
+    pill.addEventListener('click',()=>loadFav(i));item.appendChild(pill);
+    const main=document.createElement('button');main.className='fav-main';main.addEventListener('click',()=>loadFav(i));
+    main.innerHTML=`<span class="fav-info"><span class="fav-sname" style="display:block">${escapeHTML(f.stopName)}</span>
+      <span class="fav-dest">${escapeHTML(favDestination(f))}</span></span>
+      <span class="fav-eta" id="fe-${i}"></span>`;
+    item.appendChild(main);
+    if(managingFavs){
+      const controls=document.createElement('div');controls.className='fav-controls';
+      [['↑','上移',()=>moveFav(i,-1),i===0],['↓','下移',()=>moveFav(i,1),i===favs.length-1],['刪除','刪除',()=>delFav(i),false]].forEach(([label,action,handler,disabled])=>{
+        const b=document.createElement('button');b.className='small-btn'+(action==='刪除'?' delete-btn':'');b.textContent=label;
+        b.setAttribute('aria-label',`${action} ${f.route} ${f.stopName}`);b.disabled=disabled;b.addEventListener('click',handler);controls.appendChild(b);
+      });item.appendChild(controls);
+    }
+    list.appendChild(item);renderFavEta(i,f);
+  });
+}
+function renderFavEta(i,f){
+  const box=document.getElementById('fe-'+i);if(!box)return;
+  const result=favResults.get(favKey(f));
+  if(!result){box.innerHTML='<span class="fav-eta-sub">待更新</span>';return;}
+  if(result.rows?.length){
+    box.innerHTML=result.rows.map(r=>`<span class="fav-eta-main ${escapeHTML(r.cls)}" title="${escapeHTML([r.sub,r.rmk].filter(Boolean).join(' · '))}" aria-label="${escapeHTML([r.main,r.sub,r.rmk].filter(Boolean).join('，'))}">${escapeHTML(r.main)}</span>`).join('');
+  }else box.innerHTML=`<span class="fav-eta-sub">${result.error?'未能取得資料':'暫無班次'}</span>`;
+  if(result.error||result.message){
+    const note=document.createElement('span');note.className='fav-note';
+    note.textContent=result.error?(result.updated?'顯示上次資料 · '+hkTime(result.updated):errorMessage(result.error)):result.message;
+    box.appendChild(note);
+  }
+}
+function applyResolvedFavourite(f,resolved){
+  if(!resolved||!favs.includes(f))return f;
+  let target=f;
+  if(resolved.serviceType!==f.serviceType||resolved.stopSeq!==f.stopSeq||resolved.destName!==f.destName){
+    Object.assign(f,resolved);
+    // Resolution can reveal that a legacy entry duplicates a newer saved service.
+    const duplicate=favs.find(other=>other!==f && favKey(other)===favKey(f));
+    if(duplicate){
+      const first=favs.indexOf(f)<favs.indexOf(duplicate)?f:duplicate;
+      const second=first===f?duplicate:f;
+      Object.assign(first,{...second,...first});
+      favs.splice(favs.indexOf(second),1);
+      target=first;
+    }
+    persistFavs();
+  }
+  return target;
+}
+function refreshAllFavEtas(cache=new Map()){
+  if(favRefresh) return favRefresh;
+  if(!favs.length)return Promise.resolve();
+  const snapshot=favs.slice(), btn=document.getElementById('refreshFavBtn');
+  btn.disabled=true;btn.classList.add('is-refreshing');btn.setAttribute('aria-busy','true');
+  favRefresh=(async()=>{
+    const outcomes=await mapLimit(snapshot,6,async f=>{
+      const oldKey=favKey(f), previous=favResults.get(oldKey);
+      try{
+        const result=await getEtas(f,cache);
+        if(!favs.includes(f))return false;
+        const target=applyResolvedFavourite(f,result.resolved);
+        favResults.set(favKey(target),{...result,updated:Date.now()});
+        if(favs.length!==snapshot.length)renderFavs();
+        const i=favs.indexOf(target);
+        renderFavEta(i,target);
+        const dest=document.querySelectorAll('#favList .fav-dest')[i];
+        if(dest)dest.textContent=favDestination(target);
+        return true;
+      }catch(e){
+        if(favs.includes(f)){
+          favResults.set(favKey(f),{...previous,error:e});
+          renderFavEta(favs.indexOf(f),f);
+        }
+        return false;
+      }
+    });
+    if(outcomes.some(Boolean))lastFavSuccess=Date.now();
+    document.getElementById('favUpdated').textContent=favs.length&&lastFavSuccess?'最後更新 '+hkTime(lastFavSuccess):'';
+    updateNetworkStatus();
+  })().finally(()=>{
+    favRefresh=null;btn.disabled=!favs.length;btn.classList.remove('is-refreshing');btn.setAttribute('aria-busy','false');
+  });
+  return favRefresh;
+}
+function saveFav(){
+  if(!S.stopId&&!S.stopCode){toast('請先選擇站點');return;}
+  if(favs.some(f=>favKey(f)===favKey(S))){toast('已儲存過此站點');return;}
+  favs.push({...S});const saved=persistFavs();renderFavs();
+  // If an existing cycle is in flight, follow it with one fresh cycle for the new card.
+  const pending=favRefresh;
+  if(pending)pending.then(()=>refreshAllFavEtas());else refreshAllFavEtas();
+  toast(saved?'✓ 已儲存常用路線':storageMessage);
+}
+function delFav(i){
+  const removed=favs.splice(i,1)[0];if(removed)favResults.delete(favKey(removed));
+  persistFavs();renderFavs();updateNetworkStatus();toast('已刪除');
+}
+function moveFav(i,delta){
+  const to=i+delta;if(to<0||to>=favs.length)return;
+  [favs[i],favs[to]]=[favs[to],favs[i]];persistFavs();renderFavs();
+  document.querySelectorAll('.fav-controls')[to]?.querySelector(delta<0?'button':'button:nth-child(2)')?.focus();
+}
+function toggleFavManagement(){
+  managingFavs=!managingFavs;
+  const btn=document.getElementById('manageFavBtn');btn.textContent=managingFavs?'完成':'管理';btn.setAttribute('aria-pressed',String(managingFavs));renderFavs();
+}
+async function loadFav(i){
+  const f=favs[i];if(!f)return;
+  invalidateSearch();
+  document.getElementById('companySelect').value=f.company;
+  document.getElementById('routeInput').value=f.route;
+  document.getElementById('dirSelect').value=directionCode(f.dir)==='I'?'inbound':'outbound';
+  document.getElementById('mtrNote').style.display=f.company==='MTR'?'block':'none';
+  S={...f};updateDetailHead();show('etaSection');await loadETA();
+}
+
+// ── Theme ──
+(function(){
+  const html=document.documentElement,btn=document.getElementById('themeBtn');
+  const media=window.matchMedia('(prefers-color-scheme:dark)');
+  let preference=readStorage('busEtaTheme',null);
+  if(!['light','dark'].includes(preference))preference=null;
+  const moon='<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
+  const sun='<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>';
+  function apply(){
+    const dark=preference?preference==='dark':media.matches;
+    html.setAttribute('data-theme',dark?'dark':'light');btn.innerHTML=dark?sun:moon;
+    btn.setAttribute('aria-label',dark?'切換淺色模式':'切換深色模式');
+    document.getElementById('themeColor').setAttribute('content',dark?'#131311':'#f5f5f0');
+  }
+  btn.addEventListener('click',()=>{preference=html.getAttribute('data-theme')==='dark'?'light':'dark';writeStorage('busEtaTheme',preference);apply();});
+  media.addEventListener('change',()=>{if(!preference)apply();});apply();
+})();
+
+// ── Lifecycle / init: one visible-page refresh loop ──
+function updateNetworkStatus(){
+  const hasOld=favs.some(f=>favResults.get(favKey(f))?.updated);
+  const failed=favs.some(f=>favResults.get(favKey(f))?.error);
+  document.getElementById('networkStatus').textContent=navigator.onLine===false
+    ? '目前離線'+(hasOld?' · 顯示上次資料':' · 連線後更新到站時間')
+    : failed?'部分資料未能更新 · 請稍後重試':'';
+}
+function favouritesStale(){
+  return favs.some(f=>{
+    const r=favResults.get(favKey(f));
+    return !r?.updated||Date.now()-r.updated>=(r.refreshMs||REFRESH_MS);
+  });
+}
+function scheduleRefresh(){
+  clearTimeout(refreshTimer);refreshTimer=null;
+  if(!document.hidden)refreshTimer=setTimeout(refreshVisible,REFRESH_MS);
+}
+async function refreshVisible(force=false){
+  clearTimeout(refreshTimer);refreshTimer=null;
+  if(document.hidden)return;
+  const cache=new Map(), jobs=[];
+  if(force||favouritesStale())jobs.push(refreshAllFavEtas(cache));
+  if((S.stopId||S.stopCode)&&!detailPending&&(force||Date.now()-lastDetailSuccess>=REFRESH_MS))jobs.push(loadETA(cache));
+  await Promise.allSettled(jobs);
+  scheduleRefresh();
+}
+document.getElementById('routeInput').addEventListener('input',e=>{e.target.value=e.target.value.toUpperCase();invalidateSearch();});
+document.getElementById('routeInput').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();doSearch();}});
+document.getElementById('dirSelect').addEventListener('change',invalidateSearch);
+document.addEventListener('visibilitychange',()=>{if(document.hidden){clearTimeout(refreshTimer);refreshTimer=null;}else refreshVisible();});
+window.addEventListener('pageshow',()=>refreshVisible());
+window.addEventListener('pagehide',()=>{clearTimeout(refreshTimer);refreshTimer=null;});
+window.addEventListener('offline',updateNetworkStatus);
+window.addEventListener('online',()=>{updateNetworkStatus();refreshVisible(true);});
+const savedOperator=readStorage('busEtaOperator','KMB');
+if(['KMB','CTB','MTR'].includes(savedOperator))document.getElementById('companySelect').value=savedOperator;
+document.getElementById('mtrNote').style.display=savedOperator==='MTR'?'block':'none';
+document.getElementById('storageStatus').textContent=storageMessage;
+renderFavs();updateNetworkStatus();refreshVisible(true);
+
+</script>
+</body>
+</html>

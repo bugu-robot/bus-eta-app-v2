@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="zh-Hant">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>巴士ETA V2 回歸測試</title>
+<style>body{font:16px system-ui;max-width:850px;margin:24px auto;padding:16px}button{padding:12px}li{margin:8px 0}.pass{color:#28651c}.fail{color:#a12c2c}iframe{width:375px;height:700px;border:1px solid #ccc;max-width:100%}</style>
+<h1>巴士ETA V2 回歸測試</h1>
+<p>使用隔離的假 API、儲存及時鐘排程，不會更改真正收藏。此頁不是 Safari／iOS 安裝驗證。</p>
+<button id="run">執行測試</button>
+<p id="summary" role="status">尚未執行</p>
+<ol id="results"></ol>
+<div id="preview"></div>
+<script>
+// No dependencies or build step. Run in a browser from the same static origin.
+const tests=[];
+function test(name,fn){tests.push({name,fn});}
+function assert(ok,message='assertion failed'){if(!ok)throw new Error(message);}
+function equal(a,b,message='values differ'){assert(JSON.stringify(a)===JSON.stringify(b),message+': '+JSON.stringify(a));}
+const kmb={company:'KMB',route:'58M',dir:'outbound',serviceType:'1',stopId:'KSTOP',stopCode:null,stopSeq:2,stopName:'屯門市中心',destName:'葵芳站'};
+const ctb={company:'CTB',route:'11',dir:'inbound',stopId:'CSTOP',stopCode:null,stopSeq:3,stopName:'中環碼頭',destName:'舊目的地'};
+const mtr={company:'MTR',route:'K51',dir:'inbound',stopId:null,stopCode:'K51-D200',stopSeq:20,stopName:'屯門市中心',destName:'富泰'};
+const future=mins=>new Date(Date.now()+mins*60000).toISOString();
+const row=(mins,extra={})=>({co:'KMB',route:'58M',dir:'O',seq:2,service_type:1,eta:future(mins),...extra});
+const response=data=>({ok:true,json:async()=>data});
+function fixtures(url,options){
+  if(url.endsWith('/route/'))return response({data:[
+    {route:'58M',bound:'O',service_type:'1',orig_tc:'良景',dest_tc:'葵芳站'},
+    {route:'58M',bound:'O',service_type:'2',orig_tc:'建生',dest_tc:'葵芳站'},
+    {route:'X9',bound:'O',service_type:'4',orig_tc:'特別起點',dest_tc:'特別終點'}]});
+  if(url.includes('kmb/route-stop/'))return response({data:[{seq:2,stop:'KSTOP',bound:'O'}]});
+  if(url.includes('kmb/stop-eta/'))return response({data:[row(14),row(3),row(27),row(-2),row(8,{service_type:2})]});
+  if(url.includes('citybus/route/'))return response({data:{route:'11',orig_tc:'中環碼頭',dest_tc:'渣甸山'}});
+  if(url.includes('citybus/route-stop/'))return response({data:[{stop:'CSTOP',seq:3,dir:url.endsWith('inbound')?'I':'O'}]});
+  if(url.includes('citybus/eta/'))return response({data:[row(8,{co:'CTB',route:'11',stop:'CSTOP',dir:'I',seq:3}),row(1,{co:'CTB',route:'11',dir:'O',seq:3})]});
+  if(url.includes('/stop/'))return response({data:{name_tc:'車站 '+url.split('/').pop(),name_en:'Stop'}});
+  if(url.includes('getSchedule'))return response({appRefreshTimeInSecond:30,busStop:[{busStopId:'K51-D200',isSuspended:'0',bus:[
+    {arrivalTimeInSecond:'1440'},{arrivalTimeInSecond:'30'},{arrivalTimeInSecond:'720'}]}]});
+  throw new Error('Unexpected URL '+url);
+}
+let source, currentFrame;
+async function app({saved=[],storage,hash='',network=fixtures,storageFails=false}={}){
+  if(currentFrame)currentFrame.remove();
+  const frame=document.createElement('iframe');currentFrame=frame;
+  const loaded=new Promise(resolve=>frame.onload=resolve);
+  frame.srcdoc=source.replace(/<script>[\s\S]*?<\/script>/,'').replace(/<link[^>]*>/g,'');
+  document.getElementById('preview').replaceChildren(frame);await loaded;
+  const w=frame.contentWindow;
+  const values=storage||new Map([['busEtaFavorites',JSON.stringify(saved)]]);
+  const store={getItem:key=>values.get(key)??null,setItem:(key,value)=>{if(storageFails)throw new Error('quota');values.set(key,value);}};
+  const location={hash,pathname:'/bus-eta-app/',search:'?test=1'};
+  const history={state:{preserved:true},replaceState:(state,title,url)=>{location.hash='';history.url=url;history.state=state;}};
+  const calls=[],timers=new Map();let timerId=0;
+  const fetchMock=async(url,options)=>{calls.push({url,options});return network(url,options);};
+  const js=source.match(/<script>([\s\S]*?)<\/script>/)[1];
+  const run=w.Function('localStorage','location','history','fetch','setTimeout','clearTimeout',js+'\nreturn code=>eval(code);')(
+    store,location,history,fetchMock,(fn,ms)=>{const id=++timerId;timers.set(id,{fn,ms});return id;},id=>timers.delete(id));
+  await run('favRefresh');await Promise.resolve();
+  return {run,w,doc:w.document,values,location,history,calls,timers};
+}
+const encode=f=>btoa(unescape(encodeURIComponent(JSON.stringify(f))));
+const json=x=>JSON.parse(JSON.stringify(x));
+
+test('收藏：三間公司新增、重新開啟、刪除、排序及網址不變',async()=>{
+  let a=await app();
+  for(const f of [kmb,ctb,mtr]){a.run('S='+JSON.stringify(f)+';saveFav()');await a.run('favRefresh');}
+  equal(a.run('favs.length'),3);assert(!a.location.hash);
+  const values=a.values;a=await app({storage:values});equal(a.run('favs.map(f=>f.company)'),['KMB','CTB','MTR']);
+  a.run('moveFav(2,-1);delFav(0)');a=await app({storage:values});
+  equal(a.run('favs.map(f=>f.company)'),['MTR','CTB']);assert(!a.location.hash);
+});
+test('舊 hash：合併、中文與額外欄位保留、去重及清理網址',async()=>{
+  const old={...kmb,note:'家人常用',extra:{keep:true}};delete old.serviceType;
+  const a=await app({saved:[kmb],hash:'#favs='+encode([old,mtr])});
+  equal(a.run('favs.length'),2);equal(a.run('favs[0].extra'),{keep:true});equal(a.run('favs[0].note'),'家人常用');
+  equal(a.history.url,'/bus-eta-app/?test=1');equal(a.history.state,{preserved:true});
+  a.run('delFav(1)');const b=await app({storage:a.values,hash:'#favs='+encode([old,mtr])});
+  equal(b.run('favs.length'),1,'old shortcut must not resurrect deleted favourites');
+});
+test('舊 hash／storage 損壞或無法寫入時不丟失原網址',async()=>{
+  let a=await app({hash:'#favs=broken'});equal(a.location.hash,'#favs=broken');
+  a=await app({hash:'#favs='+encode([mtr]),storageFails:true});assert(a.location.hash.startsWith('#favs='));equal(a.run('favs.length'),1);
+  a=await app({storage:new Map([['busEtaFavorites','{bad'],['busEtaStopCache','null']])});equal(a.run('favs.length'),0);
+});
+test('收藏識別包括公司、方向及九巴服務類別',async()=>{
+  const a=await app({saved:[kmb]});
+  for(const f of [kmb,{...kmb,dir:'inbound'},{...kmb,serviceType:'2'}]){a.run('S='+JSON.stringify(f)+';saveFav()');await a.run('favRefresh');}
+  equal(a.run('favs.length'),3);
+});
+test('ETA：排序、最多三班、已過期／null／無效時間不佔位，保留中文備註',async()=>{
+  const a=await app();
+  const input=[row(-2),row(27),row(14),row(3,{rmk_tc:'預定班次'}),row(40),row(0,{eta:null}),row(0,{eta:'invalid'})];
+  const r=a.run('parseBusEtas('+JSON.stringify(input)+')');
+  equal(r.rows.map(p=>p.main),['3 分','14 分','27 分']);equal(r.rows[0].rmk,'預定班次');
+  equal(a.run('formatFromDate(new Date(Date.now()+60000)).main'),'即將');
+  equal(a.run('hkTime("2026-01-01T07:42:00Z")'),'15:42');equal(a.run('formatFromDate("bad")'),null);
+});
+test('城巴：去回程目的地、方向／站序／站 ID 篩選',async()=>{
+  const a=await app({saved:[ctb]});equal(a.run('favs[0].destName'),'中環碼頭');
+  equal(a.run('ctbDestination({orig_tc:"起點",dest_tc:"終點"},"outbound")'),'終點');
+  const rows=[row(1,{co:'CTB',route:'11',dir:'O',seq:3}),row(2,{co:'CTB',route:'11',dir:'I',seq:4}),row(3,{co:'CTB',route:'11',dir:'I',seq:3,stop:'WRONG'}),row(9,{co:'CTB',route:'11',dir:'I',seq:3,stop:'CSTOP'})];
+  equal(a.run('filterBusEtas('+JSON.stringify(rows)+','+JSON.stringify(ctb)+').length'),1);
+});
+test('城巴循環線：已核實單向拓撲容許特殊方向；普通線不混入另一方向',async()=>{
+  const f={...ctb,dir:'outbound'},rows=[row(3,{co:'CTB',route:'11',dir:'I',seq:3,stop:'CSTOP'})];
+  let a=await app({network:(url,opts)=>url.includes('route-stop')?response({data:url.endsWith('inbound')?[]:[{seq:3,stop:'CSTOP',dir:'O'}]}):fixtures(url,opts)});
+  equal((await a.run('filterCtbEtas('+JSON.stringify(rows)+','+JSON.stringify(f)+')')).length,1);
+  a=await app();equal((await a.run('filterCtbEtas('+JSON.stringify(rows)+','+JSON.stringify(f)+')')).length,0);
+});
+test('九巴：特別服務不是硬編碼 1，舊收藏可解決服務類別',async()=>{
+  let a=await app();a.doc.getElementById('routeInput').value='X9';await a.run('doSearch()');
+  equal(a.run('S.serviceType'),'4');assert(a.calls.some(c=>c.url.endsWith('/X9/outbound/4')));
+  a.doc.getElementById('routeInput').value='58M';await a.run('doSearch()');
+  equal(a.doc.getElementById('serviceSelect').options.length,2);
+  a.doc.getElementById('serviceSelect').value='2';await a.run('doSearch(true)');equal(a.run('S.serviceType'),'2');
+  a=await app({saved:[{...kmb,serviceType:undefined}]});equal(a.run('favs[0].serviceType'),'1');
+  const rows=[row(3),row(7,{service_type:'2'}),row(1,{dir:'I'})];
+  equal(a.run('filterBusEtas('+JSON.stringify(rows)+','+JSON.stringify({...kmb,serviceType:'2'})+').length'),1);
+});
+test('MTR：站碼、秒數、出發時間 fallback、暫停服務及三班排序',async()=>{
+  const a=await app({saved:[mtr]});equal(a.doc.querySelectorAll('#fe-0 .fav-eta-main').length,3);
+  const rows=a.run('parseMtrBus([{arrivalTimeInSecond:"108000",departureTimeInSecond:"120"},{arrivalTimeInSecond:"30"},{arrivalTimeInSecond:"900"},{arrivalTimeInSecond:"0",departureTimeInSecond:"-100"},null])');
+  equal(rows.map(r=>r.main),['即將','2 分','15 分']);
+  a.doc.getElementById('companySelect').value='MTR';a.doc.getElementById('routeInput').value='K53S';await a.run('doSearch()');
+  equal(a.doc.querySelectorAll('.stop-item').length,4);
+  const b=await app({saved:[mtr],network:(url,opts)=>url.includes('getSchedule')?response({busStop:[{busStopId:'K51-D200',isSuspended:'1'}]}):fixtures(url,opts)});
+  assert(b.doc.getElementById('fe-0').textContent.includes('暫停服務'));
+});
+test('一輪內九巴站點／城巴相同 URL／港鐵路線請求去重，下一輪重新取資料',async()=>{
+  const a=await app({saved:[kmb,{...kmb,route:'59M'},ctb,{...ctb,dir:'outbound'},mtr,{...mtr,stopCode:'K51-U010'}]});
+  for(const needle of ['stop-eta/','citybus/eta/','getSchedule'])equal(a.calls.filter(c=>c.url.includes(needle)).length,1,needle);
+  await a.run('refreshAllFavEtas()');for(const needle of ['stop-eta/','citybus/eta/','getSchedule'])equal(a.calls.filter(c=>c.url.includes(needle)).length,2,needle);
+});
+test('超過 60 站：全部站名、有最多八個同時請求及本機快取',async()=>{
+  let active=0,peak=0;
+  const network=async(url,opts)=>{
+    if(url.includes('route-stop/'))return response({data:Array.from({length:85},(_,i)=>({seq:i+1,stop:'S'+i,dir:'O'}))});
+    if(url.includes('/stop/')){active++;peak=Math.max(active,peak);await new Promise(r=>setTimeout(r,2));active--;}
+    return fixtures(url,opts);
+  };
+  let a=await app({network});a.doc.getElementById('routeInput').value='58M';await a.run('doSearch()');
+  equal(a.doc.querySelectorAll('.stop-item').length,85);assert(a.doc.getElementById('stopList').textContent.includes('車站 S84'));assert(peak<=8);
+  const values=a.values;a=await app({network,storage:values});a.doc.getElementById('routeInput').value='58M';await a.run('doSearch()');
+  equal(a.calls.filter(c=>c.url.includes('/stop/')).length,0);
+  const stale=JSON.parse(values.get('busEtaStopCache'));stale.timestamp=Date.now()-86400001;values.set('busEtaStopCache',JSON.stringify(stale));
+  a=await app({network,storage:values});equal(a.run('Object.keys(stopCache.entries).length'),0);
+});
+test('刷新中不清空 ETA，全部失敗不改最後更新時間，單一公司失敗互不影響',async()=>{
+  let fail=false,release;
+  const a=await app({saved:[kmb,ctb,mtr],network:(url,opts)=>{
+    if(fail&&url.includes('stop-eta'))return new Promise(resolve=>release=()=>resolve({ok:false,status:503}));
+    return fixtures(url,opts);
+  }});
+  const old=a.doc.getElementById('fe-0').textContent;fail=true;const pending=a.run('refreshAllFavEtas()');
+  await Promise.resolve();await Promise.resolve();equal(a.doc.getElementById('fe-0').textContent,old);
+  release();await pending;assert(a.doc.getElementById('fe-0').textContent.includes('顯示上次資料'));
+  assert(!a.doc.getElementById('fe-1').textContent.includes('未能取得'));
+  let allFail=false;
+  const b=await app({saved:[mtr],network:(url,opts)=>{if(allFail)throw new Error('offline');return fixtures(url,opts);}});
+  const timestamp=b.run('lastFavSuccess');allFail=true;await b.run('refreshAllFavEtas()');equal(b.run('lastFavSuccess'),timestamp);
+});
+test('網絡：HTTP 4xx／429／5xx、無效 JSON 和 timeout 均安全處理',async()=>{
+  for(const status of [404,429,500]){
+    const a=await app({saved:[mtr],network:()=>({ok:false,status})});equal(a.run('lastFavSuccess'),0);assert(a.doc.getElementById('fe-0').textContent.includes('未能取得'));
+  }
+  let a=await app({saved:[mtr],network:()=>({ok:true,json:async()=>{throw new SyntaxError('bad json');}})});equal(a.run('lastFavSuccess'),0);
+  a=await app({network:(url,opts)=>new Promise((resolve,reject)=>opts.signal.addEventListener('abort',()=>reject(new DOMException('timeout','AbortError'))))});
+  const pending=a.run('fj("https://example.invalid/timeout").catch(e=>e.name)');
+  [...a.timers.values()].find(t=>t.ms===10000).fn();equal(await pending,'AbortError');
+});
+test('舊非同步請求不能覆蓋新選擇',async()=>{
+  let release;
+  const a=await app({network:(url,opts)=>url.includes('stop-eta')?new Promise(resolve=>release=()=>resolve(fixtures(url,opts))):fixtures(url,opts)});
+  a.run('S='+JSON.stringify(kmb));const first=a.run('loadETA()');await Promise.resolve();await Promise.resolve();
+  a.run('S='+JSON.stringify(mtr));await a.run('loadETA()');const latest=a.doc.getElementById('etaRows').textContent;
+  release();await first;equal(a.doc.getElementById('etaRows').textContent,latest);equal(a.run('S.company'),'MTR');
+});
+test('生命週期：隱藏停止、過期返回即更新、重複 pageshow 只保留一個 timer',async()=>{
+  const a=await app({saved:[mtr]});
+  Object.defineProperty(a.doc,'hidden',{configurable:true,value:true});a.doc.dispatchEvent(new a.w.Event('visibilitychange'));
+  equal([...a.timers.values()].filter(t=>t.ms===30000).length,0);
+  a.run('favResults.forEach(r=>r.updated=Date.now()-60000)');const before=a.calls.length;
+  Object.defineProperty(a.doc,'hidden',{configurable:true,value:false});a.doc.dispatchEvent(new a.w.Event('visibilitychange'));
+  a.w.dispatchEvent(new a.w.Event('pageshow'));await a.run('favRefresh');await Promise.resolve();await Promise.resolve();
+  assert(a.calls.length>before);equal([...a.timers.values()].filter(t=>t.ms===30000).length,1);
+  const timer=[...a.timers.values()].find(t=>t.ms===30000);a.run('favResults.forEach(r=>r.updated=Date.now()-60000)');await timer.fn();assert(a.calls.length>before+1);
+});
+test('離線保留收藏及舊 ETA，上線觸發刷新',async()=>{
+  const a=await app({saved:[mtr]});Object.defineProperty(a.w.navigator,'onLine',{configurable:true,value:false});a.w.dispatchEvent(new a.w.Event('offline'));
+  assert(a.doc.getElementById('networkStatus').textContent.includes('目前離線'));equal(a.doc.querySelectorAll('.fav-item').length,1);
+  const before=a.calls.length;Object.defineProperty(a.w.navigator,'onLine',{configurable:true,value:true});a.w.dispatchEvent(new a.w.Event('online'));await a.run('favRefresh');assert(a.calls.length>before);
+});
+test('手動 dark／light 重新開啟保留',async()=>{
+  let a=await app();a.run('document.documentElement.setAttribute("data-theme","light")');a.doc.getElementById('themeBtn').click();
+  const values=a.values;a=await app({storage:values});equal(a.doc.documentElement.dataset.theme,'dark');
+  a.doc.getElementById('themeBtn').click();a=await app({storage:values});equal(a.doc.documentElement.dataset.theme,'light');
+});
+test('API 與收藏文字不能注入 HTML；正常按鈕及 Enter 搜尋可操作',async()=>{
+  const malicious='<img src=x onerror="window.injected=true">';
+  const a=await app({saved:[{...mtr,stopName:malicious,destName:malicious}]});assert(!a.doc.querySelector('#favList img'));
+  a.run('renderDetailRows([{sub:"15:42",main:"3 分",cls:"normal",rmk:'+JSON.stringify(malicious)+'}])');assert(!a.doc.querySelector('#etaRows img'));
+  a.doc.getElementById('routeInput').value='k53s';a.doc.getElementById('companySelect').value='MTR';
+  a.doc.getElementById('routeInput').dispatchEvent(new a.w.KeyboardEvent('keydown',{key:'Enter'}));await Promise.resolve();
+  equal(a.doc.getElementById('routeInput').value,'K53S');equal(a.doc.querySelectorAll('.stop-item').length,4);
+});
+
+document.getElementById('run').onclick=async()=>{
+  const button=document.getElementById('run');button.disabled=true;
+  document.getElementById('results').replaceChildren();let passed=0;
+  try{
+    source=await (await fetch('./index.html')).text();
+    for(const {name,fn} of tests){
+      const li=document.createElement('li');document.getElementById('results').appendChild(li);
+      try{await fn();passed++;li.className='pass';li.textContent='PASS · '+name;}
+      catch(e){li.className='fail';li.textContent='FAIL · '+name+' — '+e.message;}
+      document.getElementById('summary').textContent=`${passed} / ${tests.length} 通過`;
+    }
+  }catch(e){document.getElementById('summary').textContent='未能執行：'+e.message;}
+  button.disabled=false;
+};
+</script>
+</html>
