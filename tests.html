@@ -26,11 +26,22 @@ function fixtures(url,options){
   if(url.endsWith('/route/'))return response({data:[
     {route:'58M',bound:'O',service_type:'1',orig_tc:'良景',dest_tc:'葵芳站'},
     {route:'58M',bound:'O',service_type:'2',orig_tc:'建生',dest_tc:'葵芳站'},
+    {route:'58M',bound:'I',service_type:'1',orig_tc:'葵芳站',dest_tc:'良景'},
     {route:'X9',bound:'O',service_type:'4',orig_tc:'特別起點',dest_tc:'特別終點'}]});
   if(url.includes('kmb/route-stop/'))return response({data:[{seq:2,stop:'KSTOP',bound:'O'}]});
   if(url.includes('kmb/stop-eta/'))return response({data:[row(14),row(3),row(27),row(-2),row(8,{service_type:2})]});
-  if(url.includes('citybus/route/'))return response({data:{route:'11',orig_tc:'中環碼頭',dest_tc:'渣甸山'}});
-  if(url.includes('citybus/route-stop/'))return response({data:[{stop:'CSTOP',seq:3,dir:url.endsWith('inbound')?'I':'O'}]});
+  if(url.includes('citybus/route/')&&!url.includes('route-stop')){
+    const route=decodeURIComponent(url.split('/').pop());
+    if(route==='11')return response({data:{route:'11',orig_tc:'中環碼頭',dest_tc:'渣甸山'}});
+    if(route==='930')return response({data:{route:'930',orig_tc:'荃灣西站',dest_tc:'會展站'}});
+    if(route==='58M')return response({data:{route:'58M',orig_tc:'模擬城巴起點',dest_tc:'模擬城巴終點'}});
+    return {ok:false,status:404,json:async()=>({})};
+  }
+  if(url.includes('citybus/route-stop/')){
+    const route=decodeURIComponent(url.split('/').at(-2));
+    if(!['11','930','58M'].includes(route))return response({data:[]});
+    return response({data:[{stop:route==='11'?'CSTOP':'C'+route,seq:3,dir:url.endsWith('inbound')?'I':'O'}]});
+  }
   if(url.includes('citybus/eta/'))return response({data:[row(8,{co:'CTB',route:'11',stop:'CSTOP',dir:'I',seq:3}),row(1,{co:'CTB',route:'11',dir:'O',seq:3})]});
   if(url.includes('/stop/'))return response({data:{name_tc:'車站 '+url.split('/').pop(),name_en:'Stop'}});
   if(url.includes('getSchedule'))return response({appRefreshTimeInSecond:30,busStop:[{busStopId:'K51-D200',isSuspended:'0',bus:[
@@ -42,9 +53,14 @@ async function app({saved=[],storage,hash='',network=fixtures,storageFails=false
   if(currentFrame)currentFrame.remove();
   const frame=document.createElement('iframe');currentFrame=frame;
   const loaded=new Promise(resolve=>frame.onload=resolve);
-  frame.srcdoc=source.replace(/<script>[\s\S]*?<\/script>/,'').replace(/<link[^>]*>/g,'');
+  const appHtml=source.replace(/<script>[\s\S]*?<\/script>/,'').replace(/<link[^>]*>/g,'');
+  frame.srcdoc=appHtml;
   document.getElementById('preview').replaceChildren(frame);await loaded;
   const w=frame.contentWindow;
+  // jsdom does not currently populate iframe srcdoc; real browsers skip this fallback.
+  if(!w.document.getElementById('routeInput')){w.document.open();w.document.write(appHtml);w.document.close();}
+  if(!w.matchMedia)w.matchMedia=()=>({matches:false,addEventListener(){},removeEventListener(){}});
+  if(!w.HTMLElement.prototype.scrollIntoView)w.HTMLElement.prototype.scrollIntoView=function(){};
   const values=storage||new Map([['busEtaFavorites',JSON.stringify(saved)]]);
   const store={getItem:key=>values.get(key)??null,setItem:(key,value)=>{if(storageFails)throw new Error('quota');values.set(key,value);}};
   const location={hash,pathname:'/bus-eta-app/',search:'?test=1'};
@@ -59,6 +75,52 @@ async function app({saved=[],storage,hash='',network=fixtures,storageFails=false
 }
 const encode=f=>btoa(unescape(encodeURIComponent(JSON.stringify(f))));
 const json=x=>JSON.parse(JSON.stringify(x));
+async function unifiedSearch(a,route){
+  a.doc.getElementById('routeInput').value=route;await a.run('doSearch()');
+  return a.run('routeResults.map(r=>r.company)');
+}
+async function openRoute(a,route,company,dir='outbound'){
+  await unifiedSearch(a,route);
+  const routeIndex=a.run(`routeResults.findIndex(r=>r.company===${JSON.stringify(company)})`);
+  assert(routeIndex>=0,company+' result missing');a.run(`chooseRouteResult(${routeIndex})`);
+  const directionIndex=a.run(`selectedRouteResult.directions.findIndex(d=>d.dir===${JSON.stringify(dir)})`);
+  assert(directionIndex>=0,dir+' direction missing');await a.run(`chooseDirection(${directionIndex})`);
+}
+
+test('統一搜尋：正規化輸入、三營辦商、重複路線、找不到及部分 API 失敗',async()=>{
+  let a=await app();
+  equal(await unifiedSearch(a,' 58m '),['KMB','CTB']);equal(a.doc.getElementById('routeInput').value,'58M');
+  equal(a.doc.querySelectorAll('#routeResultList .choice-item').length,2);
+  assert(a.doc.getElementById('routeResultList').textContent.includes('九巴 / 龍運'));
+  assert(a.doc.getElementById('routeResultList').textContent.includes('城巴'));
+  equal(await unifiedSearch(a,'930'),['CTB']);
+  equal(await unifiedSearch(a,'k53'),['MTR']);equal(a.doc.getElementById('routeInput').value,'K53');
+  await unifiedSearch(a,'NO999');equal(a.run('routeResults.length'),0);assert(a.doc.getElementById('toast').textContent.includes('找不到'));
+  await unifiedSearch(a,'!?');equal(a.run('routeResults.length'),0);assert(a.doc.getElementById('toast').textContent.includes('有效路線'));
+  a=await app({network:(url,opts)=>url.endsWith('/kmb/route/')?{ok:false,status:503,json:async()=>({})}:fixtures(url,opts)});
+  equal(await unifiedSearch(a,'930'),['CTB']);assert(a.doc.getElementById('routeSearchStatus').textContent.includes('部分營辦商'));
+});
+
+test('選路線後才顯示方向；城巴雙向及港鐵單向／循環線',async()=>{
+  const a=await app();assert(a.doc.getElementById('directionSection').style.display==='none');
+  await unifiedSearch(a,'930');a.run('chooseRouteResult(0)');
+  equal(a.run('selectedRouteResult.directions.map(d=>d.dir)'),['outbound','inbound']);
+  assert(a.doc.getElementById('directionSection').style.display!=='none');
+  await a.run('chooseDirection(1)');equal(a.run('S.dir'),'inbound');equal(a.run('S.destName'),'荃灣西站');
+  assert(a.doc.querySelectorAll('.stop-item').length===1);
+  await unifiedSearch(a,'K53S');a.run('chooseRouteResult(0)');
+  equal(a.run('selectedRouteResult.directions.map(d=>d.dir)'),['outbound']);
+  assert(a.doc.getElementById('mtrNote').style.display!=='none');
+  await a.run('chooseDirection(0)');equal(a.doc.querySelectorAll('.stop-item').length,4);
+});
+
+test('統一搜尋後可選站及建立收藏；既有收藏仍可直接載入',async()=>{
+  let a=await app();await openRoute(a,'930','CTB','outbound');
+  a.doc.querySelector('.stop-item').click();await a.run('lastSelectionPromise');
+  a.run('saveFav()');await a.run('favRefresh');equal(a.run('favs.length'),1);equal(a.run('favs[0].company'),'CTB');equal(a.run('favs[0].route'),'930');
+  const values=a.values;a=await app({storage:values});equal(a.run('favs.length'),1);await a.run('loadFav(0)');
+  assert(a.doc.getElementById('etaSection').style.display!=='none');
+});
 
 test('收藏：三間公司新增、重新開啟、刪除、排序及網址不變',async()=>{
   let a=await app();
@@ -107,11 +169,11 @@ test('城巴循環線：已核實單向拓撲容許特殊方向；普通線不�
   a=await app();equal((await a.run('filterCtbEtas('+JSON.stringify(rows)+','+JSON.stringify(f)+')')).length,0);
 });
 test('九巴：特別服務不是硬編碼 1，舊收藏可解決服務類別',async()=>{
-  let a=await app();a.doc.getElementById('routeInput').value='X9';await a.run('doSearch()');
+  let a=await app();await openRoute(a,'X9','KMB');
   equal(a.run('S.serviceType'),'4');assert(a.calls.some(c=>c.url.endsWith('/X9/outbound/4')));
-  a.doc.getElementById('routeInput').value='58M';await a.run('doSearch()');
+  await openRoute(a,'58M','KMB');
   equal(a.doc.getElementById('serviceSelect').options.length,2);
-  a.doc.getElementById('serviceSelect').value='2';await a.run('doSearch(true)');equal(a.run('S.serviceType'),'2');
+  a.doc.getElementById('serviceSelect').value='2';await a.run('changeService()');equal(a.run('S.serviceType'),'2');
   a=await app({saved:[{...kmb,serviceType:undefined}]});equal(a.run('favs[0].serviceType'),'1');
   const rows=[row(3),row(7,{service_type:'2'}),row(1,{dir:'I'})];
   equal(a.run('filterBusEtas('+JSON.stringify(rows)+','+JSON.stringify({...kmb,serviceType:'2'})+').length'),1);
@@ -120,7 +182,7 @@ test('MTR：站碼、秒數、出發時間 fallback、暫停服務及三班排�
   const a=await app({saved:[mtr]});equal(a.doc.querySelectorAll('#fe-0 .fav-eta-main').length,3);
   const rows=a.run('parseMtrBus([{arrivalTimeInSecond:"108000",departureTimeInSecond:"120"},{arrivalTimeInSecond:"30"},{arrivalTimeInSecond:"900"},{arrivalTimeInSecond:"0",departureTimeInSecond:"-100"},null])');
   equal(rows.map(r=>r.main),['即將','2 分','15 分']);
-  a.doc.getElementById('companySelect').value='MTR';a.doc.getElementById('routeInput').value='K53S';await a.run('doSearch()');
+  await openRoute(a,'K53S','MTR');
   equal(a.doc.querySelectorAll('.stop-item').length,4);
   const b=await app({saved:[mtr],network:(url,opts)=>url.includes('getSchedule')?response({busStop:[{busStopId:'K51-D200',isSuspended:'1'}]}):fixtures(url,opts)});
   assert(b.doc.getElementById('fe-0').textContent.includes('暫停服務'));
@@ -137,9 +199,9 @@ test('超過 60 站：全部站名、有最多八個同時請求及本機快取'
     if(url.includes('/stop/')){active++;peak=Math.max(active,peak);await new Promise(r=>setTimeout(r,2));active--;}
     return fixtures(url,opts);
   };
-  let a=await app({network});a.doc.getElementById('routeInput').value='58M';await a.run('doSearch()');
+  let a=await app({network});await openRoute(a,'58M','KMB');
   equal(a.doc.querySelectorAll('.stop-item').length,85);assert(a.doc.getElementById('stopList').textContent.includes('車站 S84'));assert(peak<=8);
-  const values=a.values;a=await app({network,storage:values});a.doc.getElementById('routeInput').value='58M';await a.run('doSearch()');
+  const values=a.values;a=await app({network,storage:values});await openRoute(a,'58M','KMB');
   equal(a.calls.filter(c=>c.url.includes('/stop/')).length,0);
   const stale=JSON.parse(values.get('busEtaStopCache'));stale.timestamp=Date.now()-86400001;values.set('busEtaStopCache',JSON.stringify(stale));
   a=await app({network,storage:values});equal(a.run('Object.keys(stopCache.entries).length'),0);
@@ -198,9 +260,9 @@ test('API 與收藏文字不能注入 HTML；正常按鈕及 Enter 搜尋可操�
   const malicious='<img src=x onerror="window.injected=true">';
   const a=await app({saved:[{...mtr,stopName:malicious,destName:malicious}]});assert(!a.doc.querySelector('#favList img'));
   a.run('renderDetailRows([{sub:"15:42",main:"3 分",cls:"normal",rmk:'+JSON.stringify(malicious)+'}])');assert(!a.doc.querySelector('#etaRows img'));
-  a.doc.getElementById('routeInput').value='k53s';a.doc.getElementById('companySelect').value='MTR';
+  a.doc.getElementById('routeInput').value='k53s';
   a.doc.getElementById('routeInput').dispatchEvent(new a.w.KeyboardEvent('keydown',{key:'Enter'}));await Promise.resolve();
-  equal(a.doc.getElementById('routeInput').value,'K53S');equal(a.doc.querySelectorAll('.stop-item').length,4);
+  await a.run('lastSearchPromise');equal(a.doc.getElementById('routeInput').value,'K53S');equal(a.run('routeResults.map(r=>r.company)'),['MTR']);
 });
 
 document.getElementById('run').onclick=async()=>{

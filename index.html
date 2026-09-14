@@ -58,6 +58,13 @@
   .search-btn:active{transform:scale(.98)}
   .search-btn:disabled{opacity:.55;pointer-events:none}
   .mtr-note{font-size:.78rem;color:var(--muted);background:var(--surface2);border-radius:var(--r-m);padding:.5rem .75rem;margin-top:.5rem;border:1px solid var(--border)}
+  .choice-list{display:flex;flex-direction:column;gap:.5rem}
+  .choice-item{width:100%;min-height:44px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-m);padding:.75rem 1rem;text-align:left;box-shadow:var(--shadow-s);transition:background var(--t),border-color var(--t)}
+  .choice-item:hover,.choice-item.selected{background:var(--primary-l);border-color:var(--primary)}
+  .choice-route{display:block;font-size:1.05rem;font-weight:700;color:var(--primary)}
+  .choice-operator{display:block;font-size:.8125rem;font-weight:600;margin-top:.125rem}
+  .choice-journey{display:block;font-size:.78rem;color:var(--muted);margin-top:.125rem;overflow-wrap:anywhere}
+  .choice-status{font-size:.78rem;color:var(--muted);margin-top:.5rem;text-align:center}
 
   /* ── Stop list ── */
   .stop-list{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-l);overflow:hidden;margin-top:.5rem}
@@ -192,33 +199,31 @@
   <div class="fav-status" id="storageStatus" role="status"></div>
 
   <!-- Search -->
-  <div class="section-label">搜尋路線</div>
+  <div class="section-label">搜尋巴士路線</div>
   <div class="card">
     <div class="field-row">
-      <label class="field-label" for="companySelect">巴士公司</label>
-      <select class="field-input" id="companySelect" onchange="onCoChange()">
-        <option value="KMB">九巴 / 龍運 (KMB/LWB)</option>
-        <option value="CTB">城巴 (CTB)</option>
-        <option value="MTR">港鐵巴士 (MTR Bus)</option>
-      </select>
-    </div>
-    <div class="field-row">
       <label class="field-label" for="routeInput">路線號碼</label>
-      <input class="field-input" type="text" id="routeInput" placeholder="例如 K53、K53S、268C、E34A" autocomplete="off" autocapitalize="characters" spellcheck="false">
+      <input class="field-input" type="text" id="routeInput" placeholder="輸入路線，例如 58M、930、K53" autocomplete="off" autocapitalize="characters" spellcheck="false">
     </div>
-    <div class="field-row">
-      <label class="field-label" for="dirSelect">方向</label>
-      <select class="field-input" id="dirSelect">
-        <option value="outbound">去程 (outbound)</option>
-        <option value="inbound">回程 (inbound)</option>
-      </select>
-    </div>
-    <div class="field-row" id="serviceField" style="display:none">
+    <button class="search-btn" id="searchBtn" onclick="lastSearchPromise=doSearch()">搜尋</button>
+  </div>
+
+  <!-- Unified operator results -->
+  <div id="routeResultSection" style="display:none">
+    <div class="section-label">搜尋結果</div>
+    <div class="choice-list" id="routeResultList"></div>
+    <div class="choice-status" id="routeSearchStatus" role="status"></div>
+  </div>
+
+  <!-- Direction is chosen only after a route/operator result -->
+  <div id="directionSection" style="display:none">
+    <div class="section-label">選擇方向</div>
+    <div class="choice-list" id="directionList"></div>
+    <div class="field-row" id="serviceField" style="display:none;margin-top:.75rem">
       <label class="field-label" for="serviceSelect">服務選擇</label>
-      <select class="field-input" id="serviceSelect" onchange="doSearch(true)"></select>
+      <select class="field-input" id="serviceSelect" onchange="changeService()"></select>
     </div>
-    <div id="mtrNote" class="mtr-note" style="display:none">💡 港鐵巴士循環綫（如 K53、K53S）選去程即可</div>
-    <button class="search-btn" id="searchBtn" onclick="doSearch()">搜尋站點</button>
+    <div id="mtrNote" class="mtr-note" style="display:none">💡 港鐵巴士循環綫可能只有一個方向</div>
   </div>
 
   <!-- Stop list -->
@@ -273,6 +278,8 @@ let S = {company:'KMB',route:'',dir:'outbound',serviceType:null,stopSeq:null,sto
 let storageMessage = '', searchGeneration = 0, detailGeneration = 0;
 let managingFavs = false, favRefresh = null, refreshTimer = null;
 let lastFavSuccess = 0, lastDetailSuccess = 0, detailKey = '', detailPending = false;
+let routeResults = [], selectedRouteResult = null, selectedDirectionIndex = -1;
+let lastSearchPromise = Promise.resolve(), lastSelectionPromise = Promise.resolve();
 const favResults = new Map(); // Last displayed data only; never used as a request cache.
 const staticRequests = new Map();
 let stopCache = loadStopCache();
@@ -427,18 +434,16 @@ function show(id){
   const el=document.getElementById(id); el.style.display='block';
   el.scrollIntoView({behavior:window.matchMedia('(prefers-reduced-motion:reduce)').matches?'auto':'smooth',block:'start'});
 }
-function onCoChange(){
-  const co=document.getElementById('companySelect').value;
-  document.getElementById('mtrNote').style.display=co==='MTR'?'block':'none';
-  writeStorage('busEtaOperator',co);
-  invalidateSearch();
-}
 function invalidateSearch(){
   searchGeneration++;
   document.getElementById('searchBtn').disabled=false;
-  document.getElementById('searchBtn').textContent='搜尋站點';
+  document.getElementById('searchBtn').textContent='搜尋';
+  routeResults=[];selectedRouteResult=null;selectedDirectionIndex=-1;
+  document.getElementById('routeResultSection').style.display='none';
+  document.getElementById('directionSection').style.display='none';
   document.getElementById('serviceField').style.display='none';
   document.getElementById('stopSection').style.display='none';
+  document.getElementById('etaSection').style.display='none';
 }
 
 // ── ETA formatting (shared by favourites and detail) ──
@@ -505,7 +510,7 @@ function filterBusEtas(etas,f){
 function ctbRoute(route){
   return staticRequest('ctb-route:'+route,async()=>{
     const response=await fj(`${CTB_API}/route/CTB/${encodeURIComponent(route)}`);
-    if(!response.data || Array.isArray(response.data) || !response.data.route) throw new Error('data');
+    if(!response.data || Array.isArray(response.data) || !response.data.route){const error=new Error('not-found');error.notFound=true;throw error;}
     return response.data;
   });
 }
@@ -588,28 +593,125 @@ async function getEtas(f, cache=new Map()){
   catch(e){ return result; }
 }
 
-// ── Search ──
-async function doSearch(keepService=false){
-  const company=document.getElementById('companySelect').value;
-  const route=document.getElementById('routeInput').value.trim().toUpperCase();
-  const dir=document.getElementById('dirSelect').value;
+// ── Unified route search ──
+function operatorName(company){
+  return company==='KMB'?'九巴 / 龍運':company==='CTB'?'城巴':'港鐵巴士';
+}
+function routeName(value){ return textValue(value).trim().toUpperCase(); }
+function stopLabel(stop){ return textValue(stop?.tc)||textValue(stop?.en)||textValue(MTR_STOPS[stop?.code]?.tc)||textValue(stop?.code); }
+function directionRecord(dir,origin,destination,extra={}){
+  return {dir,origin:textValue(origin),destination:textValue(destination),...extra};
+}
+function makeCandidate(company,route,directions){
+  if(!directions.length)return null;
+  const primary=directions.find(d=>d.dir==='outbound')||directions[0];
+  return {company,route,directions,origin:primary.origin,destination:primary.destination};
+}
+async function searchKmbCandidate(route){
+  const matches=(await kmbRoutes()).filter(r=>routeName(r.route)===route && /^[OI]$/.test(textValue(r.bound))
+    && /^\d+$/.test(String(r.service_type)));
+  const directions=['O','I'].map(bound=>{
+    const variants=matches.filter(r=>r.bound===bound).sort((a,b)=>Number(a.service_type)-Number(b.service_type));
+    if(!variants.length)return null;
+    const first=variants[0];
+    return directionRecord(bound==='I'?'inbound':'outbound',first.orig_tc||first.orig_en,first.dest_tc||first.dest_en,{variants});
+  }).filter(Boolean);
+  return makeCandidate('KMB',route,directions);
+}
+async function searchCtbCandidate(route){
+  let info;
+  try{info=await ctbRoute(route);}catch(e){if(e.notFound||e.status===404||e.status===422)return null;throw e;}
+  if(routeName(info.route)!==route)return null;
+  const dirs=['outbound','inbound'];
+  const settled=await Promise.allSettled(dirs.map(dir=>ctbRouteStops(route,dir)));
+  const directions=[];
+  settled.forEach((result,i)=>{
+    if(result.status!=='fulfilled'||!result.value.length)return;
+    const dir=dirs[i];
+    directions.push(directionRecord(dir,
+      dir==='outbound'?(info.orig_tc||info.orig_en):(info.dest_tc||info.dest_en),
+      ctbDestination(info,dir),{stops:result.value}));
+  });
+  if(!directions.length && settled.some(r=>r.status==='rejected'))throw settled.find(r=>r.status==='rejected').reason;
+  return makeCandidate('CTB',route,directions);
+}
+function searchMtrCandidate(route){
+  const all=MTR_ROUTES[route]||[];
+  const codes=[...new Set(all.map(s=>s.dir).filter(d=>d==='O'||d==='I'))];
+  const directions=codes.map(code=>{
+    const dir=code==='I'?'inbound':'outbound',stops=mtrStops(route,dir);
+    return stops.length?directionRecord(dir,stopLabel(stops[0]),stopLabel(stops[stops.length-1]),{stops}):null;
+  }).filter(Boolean);
+  return makeCandidate('MTR',route,directions);
+}
+function renderRouteResults(failedCount=0){
+  const list=document.getElementById('routeResultList');list.replaceChildren();
+  routeResults.forEach((result,index)=>{
+    const button=document.createElement('button');button.type='button';button.className='choice-item';
+    button.setAttribute('aria-label',`${result.route} ${operatorName(result.company)} ${result.origin} 往 ${result.destination}`);
+    const number=document.createElement('span');number.className='choice-route';number.textContent=result.route;
+    const operator=document.createElement('span');operator.className='choice-operator';operator.textContent=operatorName(result.company);
+    const journey=document.createElement('span');journey.className='choice-journey';journey.textContent=`${result.origin||'起點'} → ${result.destination||'終點'}`;
+    button.append(number,operator,journey);button.addEventListener('click',()=>chooseRouteResult(index));list.appendChild(button);
+  });
+  document.getElementById('routeSearchStatus').textContent=failedCount?'部分營辦商資料暫未能取得，已顯示其餘結果':'';
+}
+async function doSearch(){
+  const route=routeName(document.getElementById('routeInput').value);
   document.getElementById('routeInput').value=route;
-  if(!/^[A-Z0-9]+$/.test(route)){ toast('請輸入有效路線號碼，例如 58M 或 K51'); return; }
+  if(!/^[A-Z0-9]+$/.test(route)){toast('請輸入有效路線號碼，例如 58M、930 或 K53');return;}
   const generation=++searchGeneration;
-  detailGeneration++; detailPending=false;
-  const serviceType=keepService?document.getElementById('serviceSelect').value:null;
-  const selection={company,route,dir,serviceType,stopId:null,stopCode:null,stopSeq:null,stopName:'',destName:''};
-  S=selection;
-  const btn=document.getElementById('searchBtn'); btn.textContent='搜尋中…'; btn.disabled=true;
-  document.getElementById('stopSection').style.display='none';
-  document.getElementById('etaSection').style.display='none';
+  detailGeneration++;detailPending=false;routeResults=[];selectedRouteResult=null;selectedDirectionIndex=-1;
+  const btn=document.getElementById('searchBtn');btn.textContent='搜尋中…';btn.disabled=true;
+  ['routeResultSection','directionSection','stopSection','etaSection'].forEach(id=>document.getElementById(id).style.display='none');
   document.getElementById('serviceField').style.display='none';
   try{
-    if(company==='MTR') searchMTR(route,dir,selection);
-    else await searchBus(company,route,dir,selection,generation);
-  }catch(e){ if(generation===searchGeneration) toast(errorMessage(e)); }
-  finally{ if(generation===searchGeneration){btn.textContent='搜尋站點';btn.disabled=false;} }
+    const settled=await Promise.allSettled([searchKmbCandidate(route),searchCtbCandidate(route),Promise.resolve(searchMtrCandidate(route))]);
+    if(generation!==searchGeneration)return;
+    routeResults=settled.filter(r=>r.status==='fulfilled'&&r.value).map(r=>r.value);
+    const failedCount=settled.filter(r=>r.status==='rejected').length;
+    if(!routeResults.length){
+      const message=failedCount?'部分營辦商資料暫未能取得 · 請稍後再試':'找不到此路線 · 請確認路線號碼';
+      toast(message);return;
+    }
+    renderRouteResults(failedCount);show('routeResultSection');
+  }finally{if(generation===searchGeneration){btn.textContent='搜尋';btn.disabled=false;}}
 }
+function chooseRouteResult(index){
+  const result=routeResults[index];if(!result)return;
+  selectedRouteResult=result;selectedDirectionIndex=-1;detailGeneration++;detailPending=false;
+  document.querySelectorAll('#routeResultList .choice-item').forEach((el,i)=>{
+    el.classList.toggle('selected',i===index);el.setAttribute('aria-pressed',String(i===index));
+  });
+  ['stopSection','etaSection'].forEach(id=>document.getElementById(id).style.display='none');
+  document.getElementById('serviceField').style.display='none';
+  const list=document.getElementById('directionList');list.replaceChildren();
+  result.directions.forEach((direction,i)=>{
+    const button=document.createElement('button');button.type='button';button.className='choice-item';
+    const title=document.createElement('span');title.className='choice-operator';title.textContent=direction.dir==='outbound'?'去程':'回程';
+    const journey=document.createElement('span');journey.className='choice-journey';journey.textContent=`${direction.origin||'起點'} → ${direction.destination||'終點'}`;
+    button.append(title,journey);button.addEventListener('click',()=>chooseDirection(i));list.appendChild(button);
+  });
+  document.getElementById('mtrNote').style.display=result.company==='MTR'&&result.directions.length===1?'block':'none';
+  show('directionSection');
+}
+async function chooseDirection(index,keepService=false){
+  const result=selectedRouteResult,direction=result?.directions[index];if(!result||!direction)return;
+  const generation=++searchGeneration;selectedDirectionIndex=index;
+  document.querySelectorAll('#directionList .choice-item').forEach((el,i)=>{
+    el.classList.toggle('selected',i===index);el.setAttribute('aria-pressed',String(i===index));
+  });
+  detailGeneration++;detailPending=false;
+  const serviceType=keepService?document.getElementById('serviceSelect').value:null;
+  const selection={company:result.company,route:result.route,dir:direction.dir,serviceType,stopId:null,stopCode:null,stopSeq:null,
+    stopName:'',destName:direction.destination};
+  S=selection;document.getElementById('stopSection').style.display='none';document.getElementById('etaSection').style.display='none';
+  try{
+    if(result.company==='MTR')searchMTR(result.route,direction.dir,selection);
+    else await searchBus(result.company,result.route,direction.dir,selection,generation);
+  }catch(e){if(generation===searchGeneration)toast(errorMessage(e));}
+}
+function changeService(){return chooseDirection(selectedDirectionIndex,true);}
 async function searchBus(co,route,dir,selection,generation){
   let stops;
   if(co==='KMB'){
@@ -656,7 +758,6 @@ function searchMTR(route,dir,selection=S){
   if(!stops.length){ toast('找不到此港鐵巴士路線 · 請確認路線號碼');return; }
   // Some embedded routes contain short workings; keep every existing stop.
   selection.dir=stops[0].dir==='I'?'inbound':'outbound';
-  document.getElementById('dirSelect').value=selection.dir;
   selection.destName=stops[stops.length-1].tc||stops[stops.length-1].en||'';
   const list=document.getElementById('stopList'); list.replaceChildren();
   stops.forEach(s=>addStopEl(list,s.seq,null,s.code,s.tc||MTR_STOPS[s.code]?.tc||s.en||s.code,s.en,selection));
@@ -667,7 +768,7 @@ function addStopEl(list,seq,stopId,stopCode,tc,en,selection=S){
   button.innerHTML=`<span class="stop-seq">${escapeHTML(seq)}</span><span class="stop-info"><span class="stop-name">${escapeHTML(tc)}</span>
     ${en&&en!==tc?`<span class="stop-sub" style="display:block">${escapeHTML(en)}</span>`:''}</span>
     <svg class="stop-chk" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>`;
-  button.addEventListener('click',()=>pickStop(button,seq,stopId,stopCode,tc,selection));
+  button.addEventListener('click',()=>{lastSelectionPromise=pickStop(button,seq,stopId,stopCode,tc,selection);});
   list.appendChild(button);
 }
 async function pickStop(el,seq,stopId,stopCode,tc,selection=S){
@@ -850,10 +951,7 @@ function toggleFavManagement(){
 async function loadFav(i){
   const f=favs[i];if(!f)return;
   invalidateSearch();
-  document.getElementById('companySelect').value=f.company;
   document.getElementById('routeInput').value=f.route;
-  document.getElementById('dirSelect').value=directionCode(f.dir)==='I'?'inbound':'outbound';
-  document.getElementById('mtrNote').style.display=f.company==='MTR'?'block':'none';
   S={...f};updateDetailHead();show('etaSection');await loadETA();
 }
 
@@ -903,16 +1001,12 @@ async function refreshVisible(force=false){
   scheduleRefresh();
 }
 document.getElementById('routeInput').addEventListener('input',e=>{e.target.value=e.target.value.toUpperCase();invalidateSearch();});
-document.getElementById('routeInput').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();doSearch();}});
-document.getElementById('dirSelect').addEventListener('change',invalidateSearch);
+document.getElementById('routeInput').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();lastSearchPromise=doSearch();}});
 document.addEventListener('visibilitychange',()=>{if(document.hidden){clearTimeout(refreshTimer);refreshTimer=null;}else refreshVisible();});
 window.addEventListener('pageshow',()=>refreshVisible());
 window.addEventListener('pagehide',()=>{clearTimeout(refreshTimer);refreshTimer=null;});
 window.addEventListener('offline',updateNetworkStatus);
 window.addEventListener('online',()=>{updateNetworkStatus();refreshVisible(true);});
-const savedOperator=readStorage('busEtaOperator','KMB');
-if(['KMB','CTB','MTR'].includes(savedOperator))document.getElementById('companySelect').value=savedOperator;
-document.getElementById('mtrNote').style.display=savedOperator==='MTR'?'block':'none';
 document.getElementById('storageStatus').textContent=storageMessage;
 renderFavs();updateNetworkStatus();refreshVisible(true);
 
