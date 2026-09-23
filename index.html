@@ -581,6 +581,25 @@ function mtrStops(route,dir){
   return (selected.length?selected:all).slice().sort((a,b)=>a.seq-b.seq);
 }
 
+function mtrJourneyStops(f){
+  const all=MTR_ROUTES[f.route]||[];
+  const selected=all.filter(s=>s.dir===directionCode(f.dir));
+  const route=selected.length?selected:all;
+  const variants=[];let current=[];
+  // The embedded list concatenates full and short workings with repeated sequence numbers.
+  // Preserve each original run, then use the longest one containing the chosen boarding stop.
+  for(const stop of route){
+    if(current.length && Number(stop.seq)<=Number(current[current.length-1].seq)){
+      variants.push(current);current=[];
+    }
+    current.push(stop);
+  }
+  if(current.length)variants.push(current);
+  const id=String(f.stopCode||f.stopId||'');
+  return variants.filter(v=>v.some(s=>s.code===id&&Number(s.seq)===Number(f.stopSeq)))
+    .sort((a,b)=>b.length-a.length)[0]||[];
+}
+
 // ── Shared ETA retrieval ──
 async function getEtas(f, cache=new Map()){
   f={...f,route:f.route.trim().toUpperCase(),dir:directionCode(f.dir)==='I'?'inbound':'outbound'};
@@ -815,6 +834,9 @@ function journeyBoardingIndex(f=S){
 }
 function renderJourneyOptions(){
   const section=document.getElementById('journeySection'),select=document.getElementById('alightSelect');
+  if(S.company==='MTR')journeyStops=mtrJourneyStops(S).map(s=>({
+    seq:Number(s.seq),id:s.code,name:s.tc||MTR_STOPS[s.code]?.tc||s.en||s.code
+  }));
   select.replaceChildren();
   const index=journeyBoardingIndex();
   if(index<0){section.style.display='none';return;}
@@ -877,7 +899,7 @@ async function estimateJourney(){
 }
 async function loadFavouriteJourneyStops(f,generation){
   try{
-    const raw=f.company==='MTR'?mtrStops(f.route,f.dir).map(s=>({seq:s.seq,id:s.code,name:stopLabel(s)}))
+    const raw=f.company==='MTR'?mtrJourneyStops(f).map(s=>({seq:s.seq,id:s.code,name:stopLabel(s)}))
       :f.company==='KMB'?(await kmbRouteStops(f.route,f.dir,serviceTypeOf(f))).map(s=>({seq:s.seq,id:s.stop}))
       :(await ctbRouteStops(f.route,f.dir)).map(s=>({seq:s.seq,id:s.stop}));
     if(generation!==journeyGeneration)return;

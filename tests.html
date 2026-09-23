@@ -280,6 +280,26 @@ test('歷史車程：只可選下游站點，逐段取時段資料並補回全�
   a.doc.querySelectorAll('.stop-item').at(-1).click();await a.run('lastSelectionPromise');
   assert(select.disabled);assert(a.doc.getElementById('journeyResult').textContent.includes('沒有落車站'));
 });
+test('港鐵 K51 正線與短途站序分開，車程不會跨兩條行車路徑',async()=>{
+  const a=await app({network:(url,opts)=>{
+    if(url.includes('/times_hourly/'))return response({});
+    if(url.includes('/times/K5.json'))return response({
+      'K51-U010':{'K51-U020':60},'K51-U020':{'K51-U030':60},
+      'K51-U030':{'K51-U040':60},'K51-U040':{'K51-U050':60}
+    });
+    return fixtures(url,opts);
+  }});
+  await openRoute(a,'K51','MTR');
+  a.doc.querySelector('.stop-item').click();await a.run('lastSelectionPromise');
+  equal(a.run('journeyStops.slice(0,5).map(s=>s.id)'),
+    ['K51-U010','K51-U020','K51-U030','K51-U040','K51-U050']);
+  const select=a.doc.getElementById('alightSelect');
+  equal(select.options.length,25);select.value='4';await a.run('estimateJourney()');
+  equal(a.doc.getElementById('journeyResult').textContent,'預計乘車約 4 分鐘');
+  equal(a.run('mtrJourneyStops({route:"K51",dir:"outbound",stopSeq:1,stopCode:"K51-D250"}).map(s=>s.code)'),
+    ['K51-D250','K51-D260','K51-D270','K51-D280','K51-D290']);
+  equal(a.run('mtrJourneyStops({route:"K68",dir:"outbound",stopSeq:1,stopCode:"K68-U010"}).length'),38);
+});
 test('車程資料：缺少一段不會輸出錯誤總數，跨網域失敗會讀取備用來源',async()=>{
   const a=await app({network:(url,opts)=>{
     if(url.startsWith('https://timeinterval.hkbuseta.com/'))throw new TypeError('CORS');
