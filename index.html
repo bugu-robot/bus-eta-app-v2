@@ -107,6 +107,11 @@
   .status-box h3{font-size:1rem;font-weight:600;color:var(--text);margin-bottom:.375rem}
   .status-box p{font-size:.875rem}
   .upd{font-size:.75rem;color:var(--faint);text-align:center;padding:.75rem 1rem;border-top:1px solid var(--border)}
+  .journey-card{margin-top:.75rem}
+  .journey-card .field-input{margin-top:.375rem}
+  .journey-result{font-size:1rem;font-weight:600;color:var(--primary);margin-top:.75rem;min-height:1.5rem}
+  .journey-note{font-size:.75rem;color:var(--muted);margin-top:.375rem;line-height:1.5}
+  .journey-note a{color:var(--primary)}
 
   /* ── Fav list ── */
   .fav-list{display:flex;flex-direction:column;gap:.5rem}
@@ -252,6 +257,12 @@
       <div class="eta-rows" id="etaRows"></div>
       <div class="upd" id="upd"></div>
     </div>
+    <div class="card journey-card" id="journeySection" style="display:none">
+      <label class="field-label" for="alightSelect">落車站</label>
+      <select class="field-input" id="alightSelect" onchange="lastJourneyPromise=estimateJourney()"></select>
+      <div class="journey-result" id="journeyResult" role="status">請選擇落車站</div>
+      <div class="journey-note">站與站之間的歷史估算，實際車程受交通影響 · 資料來源：<a href="https://github.com/HK-Bus-ETA/hk-bus-time-between-stops" target="_blank" rel="noopener noreferrer">HK Bus ETA</a></div>
+    </div>
     <button class="save-btn" onclick="saveFav()">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
       儲存為常用路線
@@ -272,6 +283,8 @@ const MTR_ROUTES = {"K12":[{"seq":1,"code":"K12-U010","tc":"大埔墟站","en":"
 // ── State ──
 const KMB_API = 'https://data.etabus.gov.hk/v1/transport/kmb';
 const CTB_API = 'https://rt.data.gov.hk/v2/transport/citybus';
+const JOURNEY_API = 'https://timeinterval.hkbuseta.com';
+const JOURNEY_RAW = 'https://raw.githubusercontent.com/HK-Bus-ETA/hk-bus-time-between-stops/pages';
 const REFRESH_MS = 30000, CACHE_MS = 86400000;
 const FAVORITES_KEY = 'busEtaFavorites';
 let S = {company:'KMB',route:'',dir:'outbound',serviceType:null,stopSeq:null,stopId:null,stopCode:null,stopName:'',destName:''};
@@ -280,6 +293,8 @@ let managingFavs = false, favRefresh = null, refreshTimer = null;
 let lastFavSuccess = 0, lastDetailSuccess = 0, detailKey = '', detailPending = false;
 let routeResults = [], selectedRouteResult = null, selectedDirectionIndex = -1;
 let lastSearchPromise = Promise.resolve(), lastSelectionPromise = Promise.resolve();
+let journeyStops = [], journeyGeneration = 0, lastJourneyPromise = Promise.resolve();
+const journeyRequests = new Map();
 const favResults = new Map(); // Last displayed data only; never used as a request cache.
 const staticRequests = new Map();
 let stopCache = loadStopCache();
@@ -436,6 +451,7 @@ function show(id){
 }
 function invalidateSearch(){
   searchGeneration++;
+  resetJourney(true);
   document.getElementById('searchBtn').disabled=false;
   document.getElementById('searchBtn').textContent='搜尋';
   routeResults=[];selectedRouteResult=null;selectedDirectionIndex=-1;
@@ -661,6 +677,7 @@ async function doSearch(){
   document.getElementById('routeInput').value=route;
   if(!/^[A-Z0-9]+$/.test(route)){toast('請輸入有效路線號碼，例如 58M、930 或 K53');return;}
   const generation=++searchGeneration;
+  resetJourney(true);
   detailGeneration++;detailPending=false;routeResults=[];selectedRouteResult=null;selectedDirectionIndex=-1;
   const btn=document.getElementById('searchBtn');btn.textContent='搜尋中…';btn.disabled=true;
   ['routeResultSection','directionSection','stopSection','etaSection'].forEach(id=>document.getElementById(id).style.display='none');
@@ -679,6 +696,7 @@ async function doSearch(){
 }
 function chooseRouteResult(index){
   const result=routeResults[index];if(!result)return;
+  resetJourney(true);
   selectedRouteResult=result;selectedDirectionIndex=-1;detailGeneration++;detailPending=false;
   document.querySelectorAll('#routeResultList .choice-item').forEach((el,i)=>{
     el.classList.toggle('selected',i===index);el.setAttribute('aria-pressed',String(i===index));
@@ -697,6 +715,7 @@ function chooseRouteResult(index){
 }
 async function chooseDirection(index,keepService=false){
   const result=selectedRouteResult,direction=result?.directions[index];if(!result||!direction)return;
+  resetJourney(true);
   const generation=++searchGeneration;selectedDirectionIndex=index;
   document.querySelectorAll('#directionList .choice-item').forEach((el,i)=>{
     el.classList.toggle('selected',i===index);el.setAttribute('aria-pressed',String(i===index));
@@ -745,6 +764,7 @@ async function searchBus(co,route,dir,selection,generation){
   writeStorage('busEtaStopCache',stopCache);
   if(generation!==searchGeneration) return;
   const list=document.getElementById('stopList'); list.replaceChildren();
+  journeyStops=stops.map((s,i)=>({seq:Number(s.seq)||i+1,id:String(s.stop),name:details[i]?.name_tc||details[i]?.name_en||`站點 ${s.stop}`}));
   stops.forEach((s,i)=>{
     const d=details[i];
     const tc=d?(d.name_tc||d.name_en):`站名暫未能載入 (${s.stop})`;
@@ -760,6 +780,7 @@ function searchMTR(route,dir,selection=S){
   selection.dir=stops[0].dir==='I'?'inbound':'outbound';
   selection.destName=stops[stops.length-1].tc||stops[stops.length-1].en||'';
   const list=document.getElementById('stopList'); list.replaceChildren();
+  journeyStops=stops.map(s=>({seq:Number(s.seq),id:s.code,name:s.tc||MTR_STOPS[s.code]?.tc||s.en||s.code}));
   stops.forEach(s=>addStopEl(list,s.seq,null,s.code,s.tc||MTR_STOPS[s.code]?.tc||s.en||s.code,s.en,selection));
   S={...selection}; show('stopSection');
 }
@@ -775,7 +796,100 @@ async function pickStop(el,seq,stopId,stopCode,tc,selection=S){
   document.querySelectorAll('.stop-item').forEach(i=>{i.classList.remove('selected');i.setAttribute('aria-pressed','false');});
   el.classList.add('selected');el.setAttribute('aria-pressed','true');
   S={...selection,stopSeq:seq,stopId,stopCode,stopName:tc};
+  resetJourney();
+  renderJourneyOptions();
   updateDetailHead();show('etaSection');await loadETA();
+}
+
+// ── Estimated time on board (third-party adjacent-stop averages) ──
+function resetJourney(clearStops=false){
+  journeyGeneration++;
+  if(clearStops)journeyStops=[];
+  document.getElementById('journeySection').style.display='none';
+  document.getElementById('alightSelect').replaceChildren();
+  document.getElementById('journeyResult').textContent='請選擇落車站';
+}
+function journeyBoardingIndex(f=S){
+  const id=f.stopCode||f.stopId;
+  return journeyStops.findIndex(s=>s.seq===Number(f.stopSeq)&&s.id===String(id));
+}
+function renderJourneyOptions(){
+  const section=document.getElementById('journeySection'),select=document.getElementById('alightSelect');
+  select.replaceChildren();
+  const index=journeyBoardingIndex();
+  if(index<0){section.style.display='none';return;}
+  const first=document.createElement('option');first.value='';first.textContent='請選擇落車站';select.appendChild(first);
+  journeyStops.forEach((stop,i)=>{
+    if(i<=index)return;
+    const option=document.createElement('option');option.value=String(i);option.textContent=`${stop.seq}. ${stop.name}`;select.appendChild(option);
+  });
+  select.disabled=select.options.length===1;
+  document.getElementById('journeyResult').textContent=select.disabled?'此站之後沒有落車站':'請選擇落車站';
+  section.style.display='block';
+}
+function hkWeekdayHour(now=Date.now()){
+  const parts=new Intl.DateTimeFormat('en-US',{timeZone:'Asia/Hong_Kong',weekday:'short',hour:'2-digit',hourCycle:'h23'}).formatToParts(now);
+  const day=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].indexOf(parts.find(p=>p.type==='weekday')?.value);
+  const hour=Number(parts.find(p=>p.type==='hour')?.value);
+  return {day,hour:String(hour).padStart(2,'0')};
+}
+function journeyFile(path){
+  const old=journeyRequests.get(path),now=Date.now();
+  if(old && now-old.at<15*60*1000)return old.promise;
+  const promise=fj(`${JOURNEY_API}/${path}`).catch(()=>fj(`${JOURNEY_RAW}/${path}`))
+    .catch(e=>{journeyRequests.delete(path);throw e;});
+  journeyRequests.set(path,{at:now,promise});
+  return promise;
+}
+async function journeySeconds(stops,now=Date.now()){
+  const {day,hour}=hkWeekdayHour(now);
+  const prefixes=[...new Set(stops.slice(0,-1).map(s=>s.id.slice(0,2)))];
+  const entries=await Promise.all(prefixes.map(async prefix=>{
+    const [hourly,average]=await Promise.allSettled([
+      journeyFile(`times_hourly/${day}/${hour}/${prefix}.json`),journeyFile(`times/${prefix}.json`)
+    ]);
+    return [prefix,{hourly:hourly.status==='fulfilled'?hourly.value:null,average:average.status==='fulfilled'?average.value:null}];
+  }));
+  const data=new Map(entries);let total=0,missing=0,available=false;
+  for(let i=0;i<stops.length-1;i++){
+    const current=stops[i].id,next=stops[i+1].id,bucket=data.get(current.slice(0,2));
+    available ||= !!(bucket?.hourly||bucket?.average);
+    const seconds=bucket?.hourly?.[current]?.[next] ?? bucket?.average?.[current]?.[next];
+    if(typeof seconds!=='number'||!Number.isFinite(seconds)||seconds<0) missing++;
+    else total+=seconds;
+  }
+  return {seconds:missing?null:total,missing,available};
+}
+async function estimateJourney(){
+  const index=Number(document.getElementById('alightSelect').value);
+  const start=journeyBoardingIndex(),result=document.getElementById('journeyResult');
+  const generation=++journeyGeneration;
+  if(!document.getElementById('alightSelect').value||start<0||index<=start||index>=journeyStops.length){
+    result.textContent='請選擇落車站';return;
+  }
+  const stops=journeyStops.slice(start,index+1).map(s=>({id:s.id}));
+  result.textContent='正在估算車程…';
+  try{
+    const {seconds,missing,available}=await journeySeconds(stops);
+    if(generation!==journeyGeneration)return;
+    result.textContent=!available?'車程資料暫時無法載入':missing?`未能估算：${missing} 段站距缺少資料`:`預計乘車約 ${Math.max(1,Math.round(seconds/60))} 分鐘`;
+  }catch(e){if(generation===journeyGeneration)result.textContent='車程資料暫時無法載入';}
+}
+async function loadFavouriteJourneyStops(f,generation){
+  try{
+    const raw=f.company==='MTR'?mtrStops(f.route,f.dir).map(s=>({seq:s.seq,id:s.code,name:stopLabel(s)}))
+      :f.company==='KMB'?(await kmbRouteStops(f.route,f.dir,serviceTypeOf(f))).map(s=>({seq:s.seq,id:s.stop}))
+      :(await ctbRouteStops(f.route,f.dir)).map(s=>({seq:s.seq,id:s.stop}));
+    if(generation!==journeyGeneration)return;
+    const ordered=raw.slice().sort((a,b)=>Number(a.seq)-Number(b.seq));
+    const stops=f.company==='MTR'?ordered:await mapLimit(ordered,8,async s=>{
+      try{const info=await getStopInfo(f.company,s.id);return {...s,name:info.name_tc||info.name_en||s.id};}
+      catch(e){return {...s,name:s.id};}
+    });
+    if(generation!==journeyGeneration)return;
+    journeyStops=stops.map(s=>({seq:Number(s.seq),id:String(s.id),name:s.name||s.id}));
+    renderJourneyOptions();
+  }catch(e){if(generation===journeyGeneration)document.getElementById('journeyResult').textContent='落車站暫時無法載入';}
 }
 
 // ── ETA detail view ──
@@ -952,7 +1066,13 @@ async function loadFav(i){
   const f=favs[i];if(!f)return;
   invalidateSearch();
   document.getElementById('routeInput').value=f.route;
-  S={...f};updateDetailHead();show('etaSection');await loadETA();
+  S={...f};updateDetailHead();show('etaSection');
+  document.getElementById('journeySection').style.display='block';
+  document.getElementById('alightSelect').disabled=true;
+  document.getElementById('journeyResult').textContent='正在載入沿途站點…';
+  const generation=journeyGeneration;
+  await loadETA();
+  if(generation===journeyGeneration)await loadFavouriteJourneyStops({...S},generation);
 }
 
 // ── Theme ──
