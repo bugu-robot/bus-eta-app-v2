@@ -23,6 +23,8 @@ const future=mins=>new Date(Date.now()+mins*60000).toISOString();
 const row=(mins,extra={})=>({co:'KMB',route:'58M',dir:'O',seq:2,service_type:1,eta:future(mins),...extra});
 const response=data=>({ok:true,json:async()=>data});
 function fixtures(url,options){
+  if(url.includes('/times_hourly/'))return response({'K51-U010':{'K51-U020':120}});
+  if(url.includes('/times/K5.json'))return response({'K51-U010':{'K51-U020':90},'K51-U020':{'K51-U030':180}});
   if(url.endsWith('/route/'))return response({data:[
     {route:'58M',bound:'O',service_type:'1',orig_tc:'良景',dest_tc:'葵芳站'},
     {route:'58M',bound:'O',service_type:'2',orig_tc:'建生',dest_tc:'葵芳站'},
@@ -263,6 +265,48 @@ test('API 與收藏文字不能注入 HTML；正常按鈕及 Enter 搜尋可操�
   a.doc.getElementById('routeInput').value='k53s';
   a.doc.getElementById('routeInput').dispatchEvent(new a.w.KeyboardEvent('keydown',{key:'Enter'}));await Promise.resolve();
   await a.run('lastSearchPromise');equal(a.doc.getElementById('routeInput').value,'K53S');equal(a.run('routeResults.map(r=>r.company)'),['MTR']);
+});
+
+test('歷史車程：只可選下游站點，逐段取時段資料並補回全日平均',async()=>{
+  const a=await app();await openRoute(a,'K51','MTR');
+  a.doc.querySelector('.stop-item').click();await a.run('lastSelectionPromise');
+  const select=a.doc.getElementById('alightSelect');
+  assert(a.doc.getElementById('journeySection').style.display==='block');
+  assert([...select.options].every(o=>!o.value||Number(o.value)>0));
+  select.value='2';await a.run('estimateJourney()');
+  equal(a.doc.getElementById('journeyResult').textContent,'預計乘車約 5 分鐘');
+  equal(a.calls.filter(c=>c.url.includes('/times/K5.json')).length,1);
+  equal(a.calls.filter(c=>c.url.includes('/times_hourly/')).length,1);
+  a.doc.querySelectorAll('.stop-item').at(-1).click();await a.run('lastSelectionPromise');
+  assert(select.disabled);assert(a.doc.getElementById('journeyResult').textContent.includes('沒有落車站'));
+});
+test('車程資料：缺少一段不會輸出錯誤總數，跨網域失敗會讀取備用來源',async()=>{
+  const a=await app({network:(url,opts)=>{
+    if(url.startsWith('https://timeinterval.hkbuseta.com/'))throw new TypeError('CORS');
+    if(url.includes('/times_hourly/'))return response({});
+    if(url.includes('/times/K5.json'))return response({'K51-U010':{'K51-U020':120}});
+    return fixtures(url,opts);
+  }});
+  await openRoute(a,'K51','MTR');a.doc.querySelector('.stop-item').click();await a.run('lastSelectionPromise');
+  a.doc.getElementById('alightSelect').value='2';await a.run('estimateJourney()');
+  assert(a.doc.getElementById('journeyResult').textContent.includes('1 段站距缺少資料'));
+  assert(a.calls.some(c=>c.url.startsWith('https://raw.githubusercontent.com/')));
+  equal(a.run('hkWeekdayHour(Date.parse("2026-09-19T16:00:00Z"))'),{day:0,hour:'00'});
+});
+test('收藏可選落車站；切換路線時舊車程計算不可覆蓋新選擇',async()=>{
+  let release;
+  const a=await app({saved:[mtr],network:(url,opts)=>url.includes('/times/K5.json')?
+    new Promise(resolve=>{release=()=>resolve(response({'K51-U010':{'K51-U020':90}}));}):fixtures(url,opts)});
+  await a.run('loadFav(0)');
+  const select=a.doc.getElementById('alightSelect');assert(!select.disabled);
+  assert([...select.options].some(o=>o.value),'收藏要能載入下游站點');
+  select.value=select.options[1].value;
+  const waiting=a.run('estimateJourney()');
+  await Promise.resolve();await Promise.resolve();
+  assert(typeof release==='function');
+  a.run('resetJourney(true)');release();await waiting;
+  assert(a.doc.getElementById('journeySection').style.display==='none');
+  equal(a.doc.getElementById('journeyResult').textContent,'請選擇落車站');
 });
 
 document.getElementById('run').onclick=async()=>{
